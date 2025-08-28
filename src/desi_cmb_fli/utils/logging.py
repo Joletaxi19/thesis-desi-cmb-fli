@@ -1,5 +1,7 @@
 from __future__ import annotations
+
 import logging
+
 
 def setup_logger(name: str = "desi_cmb_fli", level: int = logging.INFO) -> logging.Logger:
     logger = logging.getLogger(name)

@@ -1,6 +1,9 @@
 from __future__ import annotations
-import matplotlib.pyplot as plt
+
 from pathlib import Path
+
+import matplotlib.pyplot as plt
+
 
 def save_toy_plot(value: float, out: str | Path) -> None:
     plt.figure()
