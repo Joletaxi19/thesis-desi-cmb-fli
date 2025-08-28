@@ -21,8 +21,11 @@ pip install -e .
 pytest -q
 
 # 4) Try the minimal demo (synthetic box → FLI toy)
-python scripts/run_demo.py
+python scripts/run_demo.py --seed 0 --output figures/toy_summary.png
 ```
+
+The script accepts `--seed` and `--output` arguments to control the random seed and
+where the summary plot is written.
 
 > **Note**: Large datasets and maps are **not** stored in this repo. See `data/README.md` and `docs/data_access.md` for instructions.
 
