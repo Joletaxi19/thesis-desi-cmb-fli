@@ -1,9 +1,9 @@
+import fitsio
+import healpy as hp
 import numpy as np
 import pytest
-import healpy as hp
-import fitsio
 
-from desi_cmb_fli.data.loaders import load_planck_kappa_pr4, load_desi_lrg_catalog
+from desi_cmb_fli.data.loaders import load_desi_lrg_catalog, load_planck_kappa_pr4
 
 
 def test_load_planck_kappa_pr4(tmp_path):

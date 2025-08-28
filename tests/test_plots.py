@@ -1,4 +1,5 @@
 import matplotlib
+
 matplotlib.use("Agg")
 
 from desi_cmb_fli.analysis.plots import save_toy_plot
