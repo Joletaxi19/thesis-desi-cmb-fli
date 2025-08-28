@@ -1,0 +1,35 @@
+# Byte-compiled / caches
+__pycache__/
+*.py[cod]
+*.so
+*.dylib
+*.ipynb_checkpoints
+.pytest_cache/
+.mypy_cache/
+ruff_cache/
+
+# OS
+.DS_Store
+*.swp
+.idea/
+.vscode/
+
+# Build and env
+build/
+dist/
+*.egg-info/
+.env
+.venv
+.envrc
+
+# Data artifacts
+data/raw/
+data/interim/
+data/processed/
+outputs/
+figures/
+reports/
+
+# DVC/ML
+.dvc/
+*.lock

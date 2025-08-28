@@ -1,0 +1,37 @@
+name: desi-cmb-fli
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - pip
+  - numpy
+  - scipy
+  - matplotlib
+  - jax
+  - jaxlib
+  - flax
+  - optax
+  - numpyro
+  - chex
+  - healpy
+  - astropy
+  - h5py
+  - fitsio
+  - pyyaml
+  - rich
+  - tqdm
+  - xarray
+  - sympy
+  - networkx
+  - ipykernel
+  - pytest
+  - pytest-cov
+  - mypy
+  - pre-commit
+  - black
+  - ruff
+  - pip:
+      - git+https://github.com/DifferentiableUniverseInitiative/JaxPM.git
+      - jax-cosmo
+      - hydra-core
+      - omegaconf

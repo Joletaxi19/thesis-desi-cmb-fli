@@ -1,0 +1,10 @@
+run:
+  seed: 0
+  out_dir: outputs/demo
+
+sim:
+  mesh: [128, 128, 128]
+  box_size: 200.0
+
+inference:
+  method: "toy"

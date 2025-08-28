@@ -1,0 +1,10 @@
+site_name: thesis-desi-cmb-fli
+theme:
+  name: material
+nav:
+  - Home: index.md
+  - Getting started: getting_started.md
+  - Data access: data_access.md
+  - Pipeline: pipeline.md
+  - Contributing: contributing.md
+docs_dir: docs

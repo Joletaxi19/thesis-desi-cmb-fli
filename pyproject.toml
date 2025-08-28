@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "desi-cmb-fli"
+version = "0.1.0"
+description = "Field-level inference pipeline for DESI × CMB lensing"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [{name = "Jonathan Hawla"}]
+dependencies = [
+  "numpy",
+  "scipy",
+  "matplotlib",
+  "jax",
+  "jaxlib",
+  "flax",
+  "optax",
+  "numpyro",
+  "chex",
+  "healpy",
+  "astropy",
+  "fitsio",
+  "pyyaml",
+  "rich",
+  "tqdm",
+  "xarray",
+  "hydra-core",
+  "omegaconf",
+  "jax-cosmo",
+]
+
+[tool.ruff]
+line-length = 100
+select = ["E","F","I","UP","B","C4"]
+ignore = ["E203","E266","E501","W503"]
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra -q --color=yes"
