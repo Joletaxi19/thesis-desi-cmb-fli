@@ -1,4 +1,4 @@
-# Data layout
+## Data layout
 
 The repository does not store heavy data. Create the following directories locally:
 

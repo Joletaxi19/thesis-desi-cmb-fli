@@ -11,5 +11,6 @@ docs_dir: docs
 markdown_extensions:
   - pymdownx.snippets:
       base_path:
-        - ..
         - .
+        - docs
+      check_paths: true
