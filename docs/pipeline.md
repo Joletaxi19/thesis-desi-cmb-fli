@@ -7,5 +7,3 @@ High-level stages:
 4. **Likelihood / posterior & FLI**
 5. **Validation & null tests**
 6. **Paper-ready plots**
-
-> **Note**: This documentation is now automatically deployed with GitHub Actions! ✨
