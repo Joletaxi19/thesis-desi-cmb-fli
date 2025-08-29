@@ -32,6 +32,20 @@ dependencies = [
   "jax-cosmo",
 ]
 
+[project.optional-dependencies]
+dev = [
+  "pytest",
+  "pytest-cov",
+  "black",
+  "ruff",
+  "mypy",
+  "pre-commit",
+]
+docs = [
+  "mkdocs",
+  "mkdocs-material",
+]
+
 [tool.setuptools]
 package-dir = {"" = "src"}
 

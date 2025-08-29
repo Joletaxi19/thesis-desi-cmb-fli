@@ -8,3 +8,6 @@ nav:
   - Pipeline: pipeline.md
   - Contributing: contributing.md
 docs_dir: docs
+markdown_extensions:
+  - pymdownx.snippets:
+      base_path: .

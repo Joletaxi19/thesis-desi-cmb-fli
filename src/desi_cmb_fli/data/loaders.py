@@ -5,14 +5,6 @@ from typing import Any
 
 import numpy as np
 
-try:  # pragma: no cover - import guarded for informative error
-    import healpy as hp
-except ImportError as exc:  # pragma: no cover - informative error
-    raise ImportError(
-        "The 'healpy' package is required to load Planck PR4 kappa maps. "
-        "Install it with 'pip install healpy'."
-    ) from exc
-
 
 def load_planck_kappa_pr4(path: str | Path) -> dict[str, Any]:
     """Load a Planck PR4 kappa map from a FITS file.
@@ -40,6 +32,14 @@ def load_planck_kappa_pr4(path: str | Path) -> dict[str, Any]:
     path = Path(path)
     if not path.is_file():
         raise FileNotFoundError(f"Planck kappa map file not found: {path}")
+
+    try:  # pragma: no cover - import guarded for informative error
+        import healpy as hp
+    except ImportError as exc:  # pragma: no cover - informative error
+        raise ImportError(
+            "The 'healpy' package is required to load Planck PR4 kappa maps. "
+            "Install it with 'pip install healpy'."
+        ) from exc
 
     m = hp.read_map(path, field=0, dtype=np.float64)
     nside = hp.get_nside(m)

@@ -7,7 +7,7 @@ Public research code and reproducible pipeline for my PhD project:
 
 ## Goals
 - Clean, modular codebase to go from raw inputs to the **final plots** used in the paper(s).
-- Full reproducibility with CI checks, pinned environments, and data versioning stubs.
+- Reproducibility with CI checks, environment files, and data versioning stubs. Lockfiles will be added as the project stabilizes.
 - Open to contributions (issues, PRs).
 
 ## Quick start

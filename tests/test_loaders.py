@@ -35,5 +35,5 @@ def test_load_desi_lrg_catalog(tmp_path):
 
 
 def test_load_desi_lrg_catalog_missing(tmp_path):
-    with pytest.raises(OSError):
+    with pytest.raises(FileNotFoundError):
         load_desi_lrg_catalog(tmp_path / "missing.fits")
