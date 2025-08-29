@@ -11,23 +11,9 @@ Public research code and reproducible pipeline for my PhD project:
 - Open to contributions (issues, PRs).
 
 ## Quick start
-```bash
-# 1) Create environment
-conda env create -f env/environment.yml
-conda activate desi-cmb-fli
 
-# 2) Install the package (with dev tools)
-pip install -e ".[dev]"
-
-# 3) Run smoke tests
-pytest -q
-
-# 4) Try the minimal demo (synthetic box → FLI toy)
-python scripts/run_demo.py --seed 0 --output figures/toy_summary.png
-```
-
-The script accepts `--seed` and `--output` arguments to control the random seed and
-where the summary plot is written.
+See the Getting Started guide for installation and usage:
+https://joletaxi19.github.io/thesis-desi-cmb-fli/getting_started/
 
 > **Note**: Large datasets and maps are **not** stored in this repo. See the [data access documentation](https://joletaxi19.github.io/thesis-desi-cmb-fli/data_access/) for instructions.
 
