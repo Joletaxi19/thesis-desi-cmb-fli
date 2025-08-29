@@ -8,4 +8,4 @@ High-level stages:
 5. **Validation & null tests**
 6. **Paper-ready plots**
 
-> **Note**: This documentation is now automatically deployed on every push to main! 🚀
+> **Note**: This documentation is now automatically deployed with GitHub Actions! ✨
