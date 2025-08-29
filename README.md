@@ -16,8 +16,8 @@ Public research code and reproducible pipeline for my PhD project:
 conda env create -f env/environment.yml
 conda activate desi-cmb-fli
 
-# 2) Install the package in editable mode
-pip install -e .
+# 2) Install the package (with dev tools)
+pip install -e .[dev]
 
 # 3) Run smoke tests
 pytest -q

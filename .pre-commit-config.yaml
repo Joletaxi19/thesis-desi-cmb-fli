@@ -16,3 +16,12 @@ repos:
       - id: check-yaml
       - id: check-toml
       - id: check-added-large-files
+  - repo: local
+    hooks:
+      - id: sync-citation
+        name: Sync CITATION.cff with pyproject
+        entry: python scripts/sync_citation.py --update-date
+        language: python
+        additional_dependencies: [pyyaml, tomli]
+        pass_filenames: false
+        files: ^(pyproject\.toml|CITATION\.cff)$
