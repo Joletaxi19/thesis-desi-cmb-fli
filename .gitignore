@@ -33,3 +33,4 @@ reports/
 # DVC/ML
 .dvc/
 *.lock
+site/
