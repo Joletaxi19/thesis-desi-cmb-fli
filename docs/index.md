@@ -1,3 +1,3 @@
 # thesis-desi-cmb-fli
 
-This documentation tracks the design and usage of the codebase as it evolves towards the paper.
+Public research code and reproducible pipeline for Field-level inference (FLI) combining DESI galaxy clustering and CMB lensing (Planck PR4; ACT later). The goal is a clean, modular, and well-documented codebase producing paper-ready results.
