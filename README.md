@@ -17,7 +17,7 @@ conda env create -f env/environment.yml
 conda activate desi-cmb-fli
 
 # 2) Install the package (with dev tools)
-pip install -e .[dev]
+pip install -e ".[dev]"
 
 # 3) Run smoke tests
 pytest -q
