@@ -16,12 +16,15 @@ import datetime as _dt
 from pathlib import Path
 
 try:  # Python 3.11+
+    # Built-in TOML parser in Python 3.11+.
     import tomllib as toml
 except Exception:  # pragma: no cover - fallback for older Pythons
+    # Fallback to external library on older interpreters.
     import tomli as toml  # type: ignore
 
 import yaml
 
+# Repository root (assumes script lives in ./scripts).
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -51,6 +54,7 @@ def sync_citation(update_date: bool = False) -> bool:
             changed = True
 
     if changed:
+        # Keep original key order for readability in reviews/diffs.
         cff_path.write_text(yaml.safe_dump(cff, sort_keys=False))
     return changed
 

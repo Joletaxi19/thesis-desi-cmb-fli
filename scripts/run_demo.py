@@ -1,4 +1,9 @@
-"""Minimal demo script for the toy field-level inference pipeline."""
+"""Minimal demo for the toy field-level inference pipeline.
+
+Runs the tiny FLI loop, logs a scalar summary, and saves a small plot.
+Kept deliberately minimal so that new users can read it top-to-bottom and
+understand how the package fits together.
+"""
 
 from argparse import ArgumentParser, Namespace
 from pathlib import Path
@@ -11,7 +16,7 @@ log = setup_logger()
 
 
 def parse_args() -> Namespace:
-    """CLI options for the demo."""
+    """Define and parse CLI options for the demo run."""
     parser = ArgumentParser(description=__doc__)
     parser.add_argument(
         "--seed",
@@ -30,9 +35,13 @@ def parse_args() -> Namespace:
 
 def main() -> None:
     args = parse_args()
+
+    # Run the miniature FLI pipeline and extract a scalar summary.
     results = toy_fli(seed=args.seed)
     val = results["summary"]["toy_power"]
     log.info(f"Toy power: {val:.3e}")
+
+    # Produce a tiny plot for quick visual feedback and write it to disk.
     save_toy_plot(val, args.output)
     log.info(f"Saved {args.output}")
 

@@ -1,3 +1,10 @@
+"""Tests for data loader helpers.
+
+Each test uses minimal synthetic inputs written to temporary files to validate
+that the loader returns expected keys, dtypes, and values, and that error paths
+raise helpful exceptions.
+"""
+
 import fitsio
 import healpy as hp
 import numpy as np
@@ -7,6 +14,7 @@ from desi_cmb_fli.data.loaders import load_desi_lrg_catalog, load_planck_kappa_p
 
 
 def test_load_planck_kappa_pr4(tmp_path):
+    """Reading a small HEALPix map yields expected pixels and nside."""
     nside = 2
     kappa = np.arange(hp.nside2npix(nside), dtype=np.float64)
     path = tmp_path / "kappa.fits"
@@ -17,11 +25,13 @@ def test_load_planck_kappa_pr4(tmp_path):
 
 
 def test_load_planck_kappa_pr4_missing(tmp_path):
+    """Missing files raise a clear FileNotFoundError."""
     with pytest.raises(FileNotFoundError):
         load_planck_kappa_pr4(tmp_path / "missing.fits")
 
 
 def test_load_desi_lrg_catalog(tmp_path):
+    """Reading a tiny FITS table yields RA/DEC/Z arrays unchanged."""
     path = tmp_path / "lrg.fits"
     ra = np.array([0.1, 1.2])
     dec = np.array([-0.5, 2.5])
@@ -35,5 +45,6 @@ def test_load_desi_lrg_catalog(tmp_path):
 
 
 def test_load_desi_lrg_catalog_missing(tmp_path):
+    """Missing files raise a clear FileNotFoundError."""
     with pytest.raises(FileNotFoundError):
         load_desi_lrg_catalog(tmp_path / "missing.fits")

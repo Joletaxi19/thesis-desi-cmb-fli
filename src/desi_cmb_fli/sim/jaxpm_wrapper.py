@@ -1,3 +1,10 @@
+"""Minimal, toy simulation utilities based on JAX.
+
+These functions are placeholders for a cosmological simulation pipeline. They
+intentionally keep the math simple so they are fast, easy to understand, and
+useful for testing the rest of the package (I/O, plotting, wiring, etc.).
+"""
+
 from __future__ import annotations
 
 import jax
@@ -36,7 +43,10 @@ def make_linear_density(
     This routine is a toy example and does not perform any cosmological
     normalization.
     """
+    # Use a deterministic PRNG key derived from the provided seed.
     key = jax.random.PRNGKey(seed)
+    # Draw a standard normal field on the requested mesh. Single precision is
+    # sufficient for the toy example and yields smaller arrays.
     lin = jax.random.normal(key, shape=mesh_shape, dtype=jnp.float32)
     return lin
 
@@ -72,6 +82,8 @@ def nbody_evolve(
     This is a placeholder for a real N-body solver; it simply returns the
     input field.
     """
+    # Placeholder for a real evolution step; the identity keeps tests simple
+    # and makes the data flow explicit in the rest of the pipeline.
     return lin
 
 
@@ -92,6 +104,7 @@ def mock_summary(state: jax.Array) -> dict[str, float]:
     -----
     The statistic uses a basic FFT and is intended only for testing.
     """
+    # Compute a simple, global power proxy via an FFT and average power.
     fft = jnp.fft.fftn(state)
     power = jnp.mean(jnp.abs(fft) ** 2)
     return {"toy_power": float(power)}

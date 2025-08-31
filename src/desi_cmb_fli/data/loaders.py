@@ -1,3 +1,18 @@
+"""Data loaders for external survey products.
+
+This module provides thin, well-typed wrappers around common I/O tasks used in
+the project. The functions intentionally return simple Python dictionaries with
+clear, conventional keys (e.g. "kappa", "nside", "ra", "dec", "z") so that
+downstream code remains explicit and easy to read.
+
+Design notes:
+- Keep imports for optional heavy dependencies (e.g. ``healpy``, ``fitsio``)
+  inside functions so the rest of the package can be imported without them.
+- Validate file existence early and fail with informative errors.
+- Use ``numpy.float64`` for map/table reading to avoid subtle dtype surprises
+  across environments.
+"""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -29,6 +44,7 @@ def load_planck_kappa_pr4(path: str | Path) -> dict[str, Any]:
         If :mod:`healpy` is not installed.
     """
 
+    # Normalize and validate the input path early for helpful errors.
     path = Path(path)
     if not path.is_file():
         raise FileNotFoundError(f"Planck kappa map file not found: {path}")
@@ -41,6 +57,8 @@ def load_planck_kappa_pr4(path: str | Path) -> dict[str, Any]:
             "Install it with 'pip install healpy'."
         ) from exc
 
+    # Read HEALPix map from the first HDU (field=0). Use float64 so results
+    # are stable across platforms and downstream calculations.
     m = hp.read_map(path, field=0, dtype=np.float64)
     nside = hp.get_nside(m)
     return {"kappa": m, "nside": nside}
@@ -68,6 +86,7 @@ def load_desi_lrg_catalog(path: str | Path) -> dict[str, Any]:
         If :mod:`fitsio` is not installed.
     """
 
+    # Normalize and validate the input path early for helpful errors.
     path = Path(path)
     if not path.is_file():
         raise FileNotFoundError(f"DESI LRG catalog file not found: {path}")
@@ -80,6 +99,7 @@ def load_desi_lrg_catalog(path: str | Path) -> dict[str, Any]:
             "files. Install it with 'pip install fitsio'."
         ) from exc
 
+    # Read only the columns we need to keep memory/copy cost small.
     with fitsio.FITS(str(path)) as f:
         data = f[1].read(columns=["RA", "DEC", "Z"])
     return {"ra": data["RA"], "dec": data["DEC"], "z": data["Z"]}
