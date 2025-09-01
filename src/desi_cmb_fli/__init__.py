@@ -8,8 +8,6 @@ source checkout (e.g., during development or CI).
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _version
 
-__all__ = ["data", "sim", "inference", "analysis", "utils"]
-
 try:
     # Normal case: resolve installed package version from importlib.metadata.
     __version__ = _version("desi-cmb-fli")
