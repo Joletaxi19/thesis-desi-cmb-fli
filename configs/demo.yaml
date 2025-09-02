@@ -1,10 +1,17 @@
-run:
-  seed: 0
-  out_dir: outputs/demo
-
 sim:
-  mesh: [128, 128, 128]
-  box_size: 200.0
+  nx: 128
+  ny: 128
+  box_size: 400.0
+  A: 1.0
+  b: 1.2
+  sigma_g: 0.5
+  sigma_gamma: 0.3
+  seed: 0
 
 inference:
-  method: "toy"
+  nbin: 15
+  A_grid: [0.5, 2.0, 60]
+  b_grid: [0.5, 2.0, 60]
+
+output:
+  path: figures/synthetic_constraints.png

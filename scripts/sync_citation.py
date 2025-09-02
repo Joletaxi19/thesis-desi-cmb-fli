@@ -15,12 +15,18 @@ import argparse
 import datetime as _dt
 from pathlib import Path
 
-try:  # Python 3.11+
-    # Built-in TOML parser in Python 3.11+.
+try:
+    # Built-in TOML parser in Python 3.11+
     import tomllib as toml
-except Exception:  # pragma: no cover - fallback for older Pythons
-    # Fallback to external library on older interpreters.
-    import tomli as toml  # type: ignore
+except ImportError:  # pragma: no cover - fallback for older Pythons
+    # Fallback to external library on older interpreters
+    try:
+        import tomli as toml  # type: ignore
+    except ImportError as exc:
+        raise ImportError(
+            "Neither tomllib (Python 3.11+) nor tomli is available. "
+            "Install tomli with 'pip install tomli'."
+        ) from exc
 
 import yaml
 

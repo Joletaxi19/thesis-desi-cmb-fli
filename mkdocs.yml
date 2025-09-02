@@ -4,6 +4,7 @@ theme:
 nav:
   - Home: index.md
   - Getting started: getting_started.md
+  - Synthetic demo: synthetic.md
   - Data access: data_access.md
   - Pipeline: pipeline.md
   - Contributing: contributing.md

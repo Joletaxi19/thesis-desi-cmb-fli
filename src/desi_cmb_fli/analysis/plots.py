@@ -24,7 +24,7 @@ def save_toy_plot(value: float, out: str | Path) -> None:
         they do not exist.
     """
     plt.figure()
-    plt.title("Toy summary statistic")
+    plt.title("Scalar summary statistic")
     # Simple 2-point line from (0, 0) to (1, value) for a quick visual cue.
     plt.plot([0, 1], [0, value])
 
