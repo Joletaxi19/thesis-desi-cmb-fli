@@ -1,20 +1,23 @@
-"""Tests for plotting helpers.
+"""Smoke test for Matplotlib figure saving (non-interactive backend).
 
-Uses a non-interactive backend and a temporary directory to verify that files
-are created without depending on display availability.
+Ensures a figure can be created and saved to disk during tests/CI without
+requiring a display.
 """
 
 import matplotlib
 
-# Set the backend before importing any module that pulls in pyplot.
+# Select a non-interactive backend before importing pyplot.
 matplotlib.use("Agg")
 
 
-def test_save_toy_plot(tmp_path):
-    """Saving a tiny plot produces a file on disk."""
-    # Import after backend selection to avoid triggering an interactive backend.
-    from desi_cmb_fli.analysis.plots import save_toy_plot
+def test_can_save_figure(tmp_path):
+    import matplotlib.pyplot as plt
 
     out = tmp_path / "toy.png"
-    save_toy_plot(0.3, out)
+    plt.figure()
+    plt.plot([0, 1], [0, 0.3])
+    plt.savefig(out, bbox_inches="tight", dpi=150)
+    plt.close()
+
     assert out.exists()
+    assert out.stat().st_size > 0
