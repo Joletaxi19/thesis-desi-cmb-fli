@@ -132,10 +132,10 @@ def main() -> None:
     # Posterior grids (unnormalized), then 1D marginals
     Pf = np.exp(-d_fli)
     Pt = np.exp(-d_tbt)
-    pA_f = Pf.sum(axis=1)
-    pA_t = Pt.sum(axis=1)
-    pb_f = Pf.sum(axis=0)
-    pb_t = Pt.sum(axis=0)
+    pA_f = Pf.sum(axis=0)
+    pA_t = Pt.sum(axis=0)
+    pb_f = Pf.sum(axis=1)
+    pb_t = Pt.sum(axis=1)
     # Normalize for plotting
     pA_f /= pA_f.max() if pA_f.max() > 0 else 1
     pA_t /= pA_t.max() if pA_t.max() > 0 else 1
