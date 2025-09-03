@@ -19,7 +19,10 @@ class Binning:
 
 
 def radial_binning(
-    kk: np.ndarray, nbin: int = 15, kmin: float | None = None, kmax: float | None = None
+    kk: np.ndarray,
+    nbin: int = 15,
+    kmin: float | None = None,
+    kmax: float | None = None,
 ) -> Binning:
     """Build radial bins in |k| and index modes per bin.
 
@@ -31,6 +34,14 @@ def radial_binning(
         Number of radial bins.
     kmin, kmax : float | None
         Optional limits; defaults use min/max from kk excluding the DC mode.
+
+    Notes
+    -----
+    To avoid double-counting conjugate Fourier modes (which are not
+    independent for real-valued maps), we restrict to a unique half-plane:
+    modes with ky > 0 and the ky = 0 line with kx > 0. This matches the
+    convention used in the field-level likelihood and yields a consistent
+    effective number of modes when estimating variances in bins.
     """
     km = kk.copy().ravel()
     # Exclude the DC mode at index 0.
@@ -43,8 +54,18 @@ def radial_binning(
     indices: list[np.ndarray] = []
     km2d = kk
     flat = km2d.ravel()
+
+    # Unique half-plane mask under numpy FFT conventions
+    ny, nx = kk.shape
+    ky = np.fft.fftfreq(ny)
+    kx = np.fft.fftfreq(nx)
+    KX, KY = np.meshgrid(kx, ky, indexing="xy")
+    mask_half = (KY > 0) | ((KY == 0) & (KX > 0))
+    mask_flat = mask_half.ravel()
     for i in range(nbin):
         m = (flat >= edges[i]) & (flat < edges[i + 1])
+        # Restrict to unique half-plane to avoid conjugate double counting
+        m &= mask_flat
         # remove the DC mode if included due to numerical boundaries
         m[np.where(flat == 0.0)[0]] = False
         idx = np.where(m)[0]
