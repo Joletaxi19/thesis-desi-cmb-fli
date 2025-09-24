@@ -1,18 +1,13 @@
-# Pipeline
+# Project structure
 
-High-level stages (real analysis):
-1. **Data ingestion & map-making**
-2. **Masks, beams, noise**
-3. **Differentiable simulation (JAX)**
-4. **Likelihood / posterior & FLI**
-5. **Validation & null tests**
-6. **Paper-ready plots**
+The repository intentionally keeps only the scaffolding:
 
-Synthetic baseline (this repo):
-- Flat-sky generator for correlated galaxy overdensity and shear E-mode maps.
-- Two inference branches on identical data:
-  - Field-level (Fourier-mode) likelihood (no compression)
-  - 3×2pt-like binned power-spectrum likelihood (compressed)
-- Shared plotting utilities and side-by-side constraints.
+- `src/desi_cmb_fli/` – package root with version metadata and shared utilities.
+- `tests/` – minimal tests that confirm the package imports and helpers work.
+- `docs/` – MkDocs pages that you can extend as your project grows.
+- `configs/` – placeholder directory for experiment or run-time configuration files.
+- `figures/` – placeholder directory for generated plots or assets.
+- `scripts/` – utility scripts; currently only metadata helpers are provided.
 
-See the Synthetic demo page for details and quick commands.
+Reintroduce modules, notebooks, or workflows inside these folders as your thesis
+project takes shape.

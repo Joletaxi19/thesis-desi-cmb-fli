@@ -5,37 +5,23 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "desi-cmb-fli"
 version = "0.1.0"
-description = "Field-level inference pipeline for DESI × CMB lensing"
+description = "Skeleton repository for a thesis-scale research codebase"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
 authors = [{name = "Jonathan Hawla", email = "jonathan.hawla@example.com"}]
-keywords = ["cosmology", "field-level inference", "DESI", "CMB", "lensing", "astronomy"]
+keywords = ["research", "skeleton", "template"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
-    "Intended Audience :: Science/Research",
+    "Development Status :: 2 - Pre-Alpha",
+    "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
-    "Topic :: Scientific/Engineering :: Astronomy",
-    "Topic :: Scientific/Engineering :: Physics",
+    "Topic :: Software Development",
 ]
-dependencies = [
-  "numpy",
-  "scipy",
-  "matplotlib",
-  "healpy",
-  "astropy",
-  "fitsio",
-  "pyyaml",
-  "rich",
-  "tqdm",
-  "xarray",
-  "hydra-core",
-  "omegaconf",
-]
+dependencies = []
 
 [project.optional-dependencies]
 dev = [
@@ -50,15 +36,6 @@ docs = [
   "mkdocs",
   "mkdocs-material",
   "pymdown-extensions",
-]
-jax = [
-  "jax",
-  "jaxlib",
-  "flax",
-  "optax",
-  "numpyro",
-  "chex",
-  "jax-cosmo",
 ]
 
 [tool.setuptools]

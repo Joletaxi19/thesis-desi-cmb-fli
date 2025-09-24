@@ -3,10 +3,10 @@ theme:
   name: material
 nav:
   - Home: index.md
-  - Getting started: getting_started.md
-  - Synthetic demo: synthetic.md
-  - Data access: data_access.md
-  - Pipeline: pipeline.md
+  - Getting Started: getting_started.md
+  - Project Structure: pipeline.md
+  - Extending the Skeleton: synthetic.md
+  - Data Placeholders: data_access.md
   - Contributing: contributing.md
 docs_dir: docs
 markdown_extensions:

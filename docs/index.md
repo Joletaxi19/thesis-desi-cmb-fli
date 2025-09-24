@@ -1,9 +1,9 @@
 # thesis-desi-cmb-fli
 
-Public research code and reproducible pipeline for Field-level inference (FLI)
-combining DESI galaxy clustering and CMB lensing (Planck PR4; ACT later).
+Welcome to the documentation for the stripped-down thesis repository. The goal
+is to provide a ready-to-extend scaffold with working docs, packaging, and test
+infrastructure while leaving the scientific implementation up to you.
 
-This repo now includes a fast, CPU-only synthetic baseline to compare FLI with a
-3×2pt-like analysis on the same data. It demonstrates end-to-end wiring:
-simulation → likelihoods → plots. Use it as a template while the real pipeline
-is built out.
+Use this space to capture the big-picture goals of your project once you start
+adding code again. For now it serves as a landing page for the development
+skeleton.

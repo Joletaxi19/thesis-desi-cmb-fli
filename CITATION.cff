@@ -1,10 +1,10 @@
 cff-version: 1.2.0
-message: If you use this code, please cite it as below.
+message: If you build on this project skeleton, please cite it as below.
 authors:
 - family-names: Hawla
   given-names: Jonathan
-title: "thesis-desi-cmb-fli: Field-level inference for DESI \xD7 CMB lensing"
+title: 'thesis-desi-cmb-fli: project skeleton for thesis development'
 version: 0.1.0
-date-released: '2025-09-02'
+date-released: '2025-09-24'
 license: MIT
 repository-code: https://github.com/Joletaxi19/thesis-desi-cmb-fli
