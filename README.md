@@ -26,12 +26,47 @@ rebuilt cleanly.
   changes.
 
 ## Getting started
-1. The development environment may be created with: `conda env create -f
-   env/environment.yml && conda activate desi-cmb-fli`
-2. The package can be installed locally with development tools: `pip install -e
-   ".[dev]"`
-3. The test suite is executed via `pytest`.
-4. Documentation previews are served with `mkdocs serve`.
+
+### Initial setup (one-time)
+1. **Create and activate environment**:
+   ```bash
+   conda env create -f env/environment.yml
+   conda activate desi-cmb-fli
+   ```
+
+2. **Install package with development tools**:
+   ```bash
+   pip install -e ".[dev]"
+   ```
+
+3. **Enable automation hooks** (critical!):
+   ```bash
+   pre-commit install
+   ```
+
+4. **Optional: Install documentation dependencies**:
+   ```bash
+   pip install -e ".[docs]"
+   ```
+
+### Development workflow
+After initial setup, the workflow is fully automated:
+```bash
+# Write your code...
+git add .
+git commit -m "Your changes"  # ← Auto-formatting & validation
+git push                      # ← Auto-testing & doc deployment
+```
+
+### Manual commands (optional)
+- Run tests locally: `pytest`
+- Check code style: `ruff check .`
+- Preview documentation: `mkdocs serve`
+
+### What happens automatically
+- **On commit**: Code formatting (black), linting (ruff), citation sync, file validation
+- **On push**: Full test suite via GitHub Actions, documentation build/deploy
+- **No manual intervention needed** after initial setup!
 
 ## Building the cosmology analysis
 - DESI/Planck/ACT interfaces and FLI likelihood modules are intended to reside
