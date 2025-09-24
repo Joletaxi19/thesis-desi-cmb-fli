@@ -1,13 +1,22 @@
-# Project structure
+# Pipeline blueprint
 
-The repository intentionally keeps only the scaffolding:
+The scientific objective is to extract cosmological information using
+field-level inference on DESI galaxy clustering jointly with CMB lensing
+convergence maps from Planck and ACT. The future implementation is expected to
+cover the following stages:
 
-- `src/desi_cmb_fli/` – package root with version metadata and shared utilities.
-- `tests/` – minimal tests that confirm the package imports and helpers work.
-- `docs/` – MkDocs pages that you can extend as your project grows.
-- `configs/` – placeholder directory for experiment or run-time configuration files.
-- `figures/` – placeholder directory for generated plots or assets.
-- `scripts/` – utility scripts; currently only metadata helpers are provided.
+- **Survey ingestion**: downloading, validating, and documenting DESI tracer
+  selections alongside Planck/ACT lensing maps, masks, and noise properties.
+- **Forward modeling**: simulating the coupled matter field, galaxy observables,
+  and lensing reconstructions needed for FLI-based likelihoods.
+- **Likelihood & inference**: developing the Fourier-space field-level
+  likelihood together with control analyses (e.g., 3×2pt) for cross-validation.
+- **Validation**: performing null tests, generating mocks, and executing
+  consistency checks that span instrument systematics to cosmological
+  parameters.
+- **Reporting**: producing reproducible figures, tables, and documentation to
+  support thesis deliverables and eventual publications.
 
-Reintroduce modules, notebooks, or workflows inside these folders as your thesis
-project takes shape.
+The current repository provides only the scaffolding (package layout, tests,
+MkDocs, CI). Each stage should be populated under `src/desi_cmb_fli/` as the
+thesis work advances.

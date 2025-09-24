@@ -1,5 +1,7 @@
 # Configuration placeholders
 
-Store project-specific configuration files (YAML, JSON, TOML, etc.) in this
-folder as you rebuild the analysis pipeline. Keeping them in version control
-helps document reproducible runs.
+This directory is reserved for experiment configurations as the field-level
+inference pipeline takes shape. Typical files may describe DESI tracer
+selections, mask combinations, noise models for Planck/ACT lensing maps, or
+sampler settings for the FLI likelihood. Maintaining representative YAML/TOML
+configs under version control helps document reproducible runs.

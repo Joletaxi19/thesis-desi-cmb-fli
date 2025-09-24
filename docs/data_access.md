@@ -1,14 +1,23 @@
-# Data placeholders
+# Data access plan
 
-No external datasets ship with this repository. Create your own data layout once
-you begin implementing the analysis. A common pattern is:
+No survey products are distributed with this repository. As the analysis is
+implemented, acquisition steps should be documented for each dataset:
+
+- **DESI galaxies** – tracer selections, release versions, and any preprocessing
+  scripts (masking, depth cuts, random catalogs).
+- **Planck PR4 CMB lensing** – download endpoints, filtering steps, and
+  conversion to the internal map format.
+- **ACT DR6+ CMB lensing** – access requirements and calibration steps required
+  for cross-correlation with DESI.
+
+A recommended local layout is:
 
 ```
 data/
-|- raw/       # Original survey/catalogue files (not tracked in git)
-|- interim/   # Temporary or cached products
-`- processed/ # Final data products used in results
+|- raw/       # Read-only copies of official DESI and CMB lensing products
+|- interim/   # Cached or down-sampled intermediates for development work
+`- processed/ # Analysis-ready maps, masks, and summary statistics
 ```
 
-Document any download scripts, checksums, or storage requirements here so the
-future project remains reproducible.
+For reproducibility, checksums, licences, and any proprietary access
+constraints should accompany the acquisition instructions.

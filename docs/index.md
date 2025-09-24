@@ -1,9 +1,10 @@
-# thesis-desi-cmb-fli
+# Thesis overview
 
-Welcome to the documentation for the stripped-down thesis repository. The goal
-is to provide a ready-to-extend scaffold with working docs, packaging, and test
-infrastructure while leaving the scientific implementation up to you.
+This documentation collects design notes for a thesis-scale analysis combining
+DESI galaxy clustering with CMB lensing from Planck and ACT using field-level
+inference (FLI). The repository is maintained as a stripped scaffold: packaging,
+testing, and documentation workflows remain available so the scientific pieces
+can be reimplemented with a clean slate.
 
-Use this space to capture the big-picture goals of your project once you start
-adding code again. For now it serves as a landing page for the development
-skeleton.
+These pages should capture cosmological objectives, data products, and pipeline
+decisions as the project progresses from concept to a full FLI analysis.

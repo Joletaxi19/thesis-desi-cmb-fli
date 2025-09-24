@@ -2,11 +2,11 @@ site_name: thesis-desi-cmb-fli
 theme:
   name: material
 nav:
-  - Home: index.md
+  - Overview: index.md
   - Getting Started: getting_started.md
-  - Project Structure: pipeline.md
-  - Extending the Skeleton: synthetic.md
-  - Data Placeholders: data_access.md
+  - Pipeline Blueprint: pipeline.md
+  - Implementation Roadmap: synthetic.md
+  - Data Access Plan: data_access.md
   - Contributing: contributing.md
 docs_dir: docs
 markdown_extensions:

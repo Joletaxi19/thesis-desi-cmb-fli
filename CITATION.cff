@@ -1,10 +1,17 @@
 cff-version: 1.2.0
-message: If you build on this project skeleton, please cite it as below.
+message: This project scaffold should be cited as described below when reused or extended.
 authors:
 - family-names: Hawla
   given-names: Jonathan
-title: 'thesis-desi-cmb-fli: project skeleton for thesis development'
+title: "thesis-desi-cmb-fli: Scaffold for DESI \xD7 CMB lensing field-level inference"
 version: 0.1.0
 date-released: '2025-09-24'
 license: MIT
 repository-code: https://github.com/Joletaxi19/thesis-desi-cmb-fli
+keywords:
+- cosmology
+- field-level inference
+- DESI
+- Planck
+- ACT
+- CMB lensing

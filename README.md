@@ -1,33 +1,54 @@
 # thesis-desi-cmb-fli
 
-This repository now ships as a clean, documented skeleton for a thesis-scale
-research codebase. All domain-specific implementations have been intentionally
-removed so you can rebuild the scientific parts from scratch while keeping the
-support tooling in place.
+Repository scaffold for a thesis project targeting **field-level inference (FLI)** on
+DESI galaxy samples cross-correlated with CMB lensing reconstructions from
+Planck and ACT. The scientific pipeline itself remains unimplemented; the
+supporting infrastructure has been preserved so the cosmological workflow can be
+rebuilt cleanly.
 
-## What stays in the skeleton
-- Python package stub (`desi_cmb_fli`) with a versioned entry point and a
-  reusable logging helper.
-- Automated docs powered by MkDocs Material (see `mkdocs.yml` and `docs/`).
-- Testing and lint hooks configured via `pytest`, `ruff`, `black`, and `mypy`.
-- Utility scripts such as `scripts/sync_citation.py` to keep metadata in sync.
-- Placeholders for configs (`configs/`) and generated assets (`figures/`).
+## Thesis vision
+- Construction of a reproducible FLI workflow that ingests DESI galaxy
+  clustering data and CMB lensing maps (Planck PR4, ACT DR6+).
+- Delivery of joint cosmological constraints from the cross-correlation of those
+  observables, with clear validation and documentation.
+- Maintenance of publication-grade software practices (tests, docs, metadata)
+  throughout thesis development.
+
+## What is already in place
+- Python package stub (`desi_cmb_fli`) exposing version metadata and a reusable
+  logging helper to seed new modules.
+- Automation hooks: MkDocs-based documentation, pytest configuration, formatting
+  via `ruff`/`black`, and a `sync_citation` helper script.
+- Repository structure for configs (`configs/`), generated figures (`figures/`),
+  and documentation (`docs/`), ready to host the real pipeline components.
+- GitHub Actions for continuous testing and doc deployment—pushes trigger the
+  test suite and documentation builds rerun automatically when relevant content
+  changes.
 
 ## Getting started
-1. Create the development environment (example with conda):
-   `conda env create -f env/environment.yml && conda activate desi-cmb-fli`
-2. Install the package locally with the dev extras: `pip install -e ".[dev]"`
-3. Run the test suite: `pytest`
-4. Serve the docs locally: `mkdocs serve`
+1. The development environment may be created with: `conda env create -f
+   env/environment.yml && conda activate desi-cmb-fli`
+2. The package can be installed locally with development tools: `pip install -e
+   ".[dev]"`
+3. The test suite is executed via `pytest`.
+4. Documentation previews are served with `mkdocs serve`.
 
-## Rebuilding your analysis
-- Re-introduce your scientific modules under `src/desi_cmb_fli/`.
-- Add configuration files to `configs/` and point your scripts/tests at them.
-- Document new components in `docs/` and update `mkdocs.yml` navigation.
-- Extend `tests/` with realistic checks for the functionality you add.
+## Building the cosmology analysis
+- DESI/Planck/ACT interfaces and FLI likelihood modules are intended to reside
+  under `src/desi_cmb_fli/`.
+- Experiment configurations (tracer selections, mask definitions, inference
+  grids) should be tracked in `configs/` with lightweight examples committed to
+  the repository.
+- The `tests/` directory is expected to grow with unit, integration, and
+  regression checks covering the forward model, likelihood evaluations, and
+  validation diagnostics.
+- Scientific logic should be documented in `docs/`, including dataset handling,
+  field modeling choices, validation strategies, and interpretation of
+  cosmological posteriors.
 
 ## Citation
-Please cite this repository using `CITATION.cff` if you build upon the skeleton.
+The project scaffold for the FLI × DESI × CMB lensing analysis should be cited
+using `CITATION.cff`.
 
 ## License
 MIT (see `LICENSE`).
