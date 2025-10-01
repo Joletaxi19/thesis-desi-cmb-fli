@@ -20,7 +20,7 @@ def setup_logger(name: str = "desi_cmb_fli", level: int = logging.INFO) -> loggi
         Logger name. Use sub-names (e.g. ``"desi_cmb_fli.analysis"``) to get a
         hierarchical logger that inherits level and handlers.
     level
-        Logging level for the created handler, defaults to ``INFO``.
+        Logging level for the logger (handlers inherit unless set), defaults to ``INFO``.
 
     Returns
     -------
