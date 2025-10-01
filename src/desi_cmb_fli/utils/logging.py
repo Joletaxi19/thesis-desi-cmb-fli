@@ -34,12 +34,15 @@ def setup_logger(name: str = "desi_cmb_fli", level: int = logging.INFO) -> loggi
     multiple modules.
     """
     logger = logging.getLogger(name)
+
+    logger.setLevel(level)
+
     if not logger.handlers:
-        logger.setLevel(level)
         ch = logging.StreamHandler()
         fmt = logging.Formatter(
             "[%(levelname)s] %(asctime)s - %(name)s: %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
         )
         ch.setFormatter(fmt)
         logger.addHandler(ch)
+
     return logger

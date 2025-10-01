@@ -40,6 +40,11 @@ dev = [
   "ruff",
   "mypy",
   "pre-commit",
+  "jupyter",
+  "ipykernel",
+  "matplotlib",
+  "pyyaml",
+  "tomli",
 ]
 docs = [
   "mkdocs",
