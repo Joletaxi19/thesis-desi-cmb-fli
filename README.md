@@ -15,8 +15,7 @@ rebuilt cleanly.
   throughout thesis development.
 
 ## What is already in place
-- Python package stub (`desi_cmb_fli`) exposing version metadata and a reusable
-  logging helper to seed new modules.
+- Python package stub (`desi_cmb_fli`) exposing version metadata.
 - Automation hooks: MkDocs-based documentation, pytest configuration, formatting
   via `ruff`/`black`, and a `sync_citation` helper script.
 - Repository structure for configs (`configs/`), generated figures (`figures/`),
