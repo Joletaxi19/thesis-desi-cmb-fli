@@ -5,7 +5,7 @@ authors:
   given-names: Jonathan
 title: "thesis-desi-cmb-fli: Scaffold for DESI \xD7 CMB lensing field-level inference"
 version: 0.1.0
-date-released: '2025-10-01'
+date-released: '2025-10-08'
 license: MIT
 repository-code: https://github.com/Joletaxi19/thesis-desi-cmb-fli
 keywords:

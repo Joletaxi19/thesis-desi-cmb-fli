@@ -43,6 +43,7 @@ dev = [
   "jupyter",
   "ipykernel",
   "matplotlib",
+  "scipy",
   "pyyaml",
   "tomli",
 ]
