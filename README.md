@@ -49,13 +49,18 @@ rebuilt cleanly.
    ```
 
 ### Development workflow
-After initial setup, the workflow is fully automated:
+After initial setup, the workflow is fully automated. **It is recommended to use feature branches for development**:
 ```bash
+# Create and switch to a new branch for your feature or fix
+git checkout -b my-feature-branch
+
 # Write your code...
 git add .
 git commit -m "Your changes"  # ← Auto-formatting & validation
-git push                      # ← Auto-testing & doc deployment
+git push origin my-feature-branch  # ← Auto-testing & doc deployment
 ```
+
+Once your work is ready, open a pull request to merge your branch into `main`.
 
 ### Manual commands (optional)
 - Run tests locally: `pytest`
@@ -65,7 +70,6 @@ git push                      # ← Auto-testing & doc deployment
 ### What happens automatically
 - **On commit**: Code formatting (black), linting (ruff), citation sync, file validation
 - **On push**: Full test suite via GitHub Actions, documentation build/deploy
-- **No manual intervention needed** after initial setup!
 
 ## Building the cosmology analysis
 - DESI/Planck/ACT interfaces and FLI likelihood modules are intended to reside
