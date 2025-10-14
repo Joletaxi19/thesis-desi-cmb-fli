@@ -3,10 +3,10 @@ Sync CITATION.cff fields from pyproject.toml.
 
 Updates:
 - version: set to project.version
-- date-released: set to today if --update-date specified
+- date-released: automatically updated to today when version changes
 
 Usage:
-  python scripts/sync_citation.py --update-date
+  python scripts/sync_citation.py
 """
 
 from __future__ import annotations
@@ -39,7 +39,7 @@ def load_pyproject() -> dict:
     return data.get("project", {})
 
 
-def sync_citation(update_date: bool = False) -> bool:
+def sync_citation() -> bool:
     project = load_pyproject()
     version = project.get("version")
     if not version:
@@ -49,15 +49,19 @@ def sync_citation(update_date: bool = False) -> bool:
     cff = yaml.safe_load(cff_path.read_text())
 
     changed = False
+    version_changed = False
+
+    # Check if version needs updating
     if cff.get("version") != version:
         cff["version"] = version
+        version_changed = True
         changed = True
 
-    if update_date:
+    # If version changed, also update the release date
+    if version_changed:
         today = _dt.date.today().isoformat()
-        if cff.get("date-released") != today:
-            cff["date-released"] = today
-            changed = True
+        cff["date-released"] = today
+        changed = True
 
     if changed:
         # Keep original key order for readability in reviews/diffs.
@@ -67,15 +71,15 @@ def sync_citation(update_date: bool = False) -> bool:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--update-date", action="store_true", help="Also update date-released to today")
     # Pre-commit may pass filenames; accept and ignore them gracefully
     ap.add_argument("paths", nargs="*", help=argparse.SUPPRESS)
-    args = ap.parse_args()
-    changed = sync_citation(update_date=args.update_date)
+    ap.parse_args()
+
+    changed = sync_citation()
     if changed:
-        print("CITATION.cff updated")
+        print("✓ CITATION.cff updated (version and date)")
     else:
-        print("CITATION.cff already in sync")
+        print("✓ CITATION.cff already in sync")
 
 
 if __name__ == "__main__":

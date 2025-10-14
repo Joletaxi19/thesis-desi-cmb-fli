@@ -1,6 +1,7 @@
-# Figures placeholder
+# Figures
 
-This directory hosts lightweight, version-controlled figures that document the
-DESI × CMB lensing FLI project (e.g., pipeline diagrams, validation summaries,
-reduced-size posterior plots). Larger artefacts should reside outside the
-repository or be ignored via `.gitignore` as appropriate.
+This directory contains figures documenting the DESI × CMB lensing FLI project
+(e.g., pipeline diagrams, validation summaries, posterior plots).
+
+All figures in this directory are version-controlled. Be mindful of file sizes
+to keep the repository lean.

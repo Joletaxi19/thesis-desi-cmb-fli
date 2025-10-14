@@ -17,7 +17,7 @@ repos:
     hooks:
       - id: sync-citation
         name: Sync CITATION.cff with pyproject
-        entry: python scripts/sync_citation.py --update-date
+        entry: python scripts/sync_citation.py
         language: python
         additional_dependencies: [pyyaml, tomli]
         pass_filenames: false

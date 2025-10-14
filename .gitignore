@@ -27,8 +27,6 @@ data/raw/
 data/interim/
 data/processed/
 outputs/
-figures/*
-!figures/README.md
 reports/
 
 # DVC/ML

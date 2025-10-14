@@ -2,11 +2,4 @@
 
 from __future__ import annotations
 
-import sys
-from pathlib import Path
-
-# Ensure the src/ directory is importable without requiring installation.
-ROOT = Path(__file__).resolve().parents[1]
-SRC = ROOT / "src"
-if str(SRC) not in sys.path:
-    sys.path.insert(0, str(SRC))
+# With editable install (pip install -e .), no sys.path manipulation needed.
