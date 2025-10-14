@@ -46,13 +46,12 @@ After initial setup, development is fully automated:
 
 These commands are optional (automation handles them):
 - **Run tests**: `pytest`
-- **Check code style**: `ruff check .`
-- **Format code**: `black .`
+- **Check and format code**: `ruff check . && ruff format .`
 - **Validate setup**: Try importing the package in Python
 
 ## What's automated
 
-- **Pre-commit hooks**: Code formatting (black/ruff), YAML validation, citation sync
+- **Pre-commit hooks**: Code formatting (ruff), YAML validation, citation sync
 - **GitHub Actions**: Full test suite, documentation build/deploy on push
 - **Metadata sync**: `CITATION.cff` automatically updates from `pyproject.toml`
 
