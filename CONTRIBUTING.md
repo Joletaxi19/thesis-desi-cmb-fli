@@ -8,6 +8,6 @@
   `pytest`) before pushing, particularly for modules connected to
   DESI/Planck/ACT workflows.
 
-Versioning
+## Versioning
 - The version in `pyproject.toml` should be bumped whenever a release advances
   the DESI × CMB lensing analysis, and 'CITATION.cff' version and release date should be updated accordingly.
