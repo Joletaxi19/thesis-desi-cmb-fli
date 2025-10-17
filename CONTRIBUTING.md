@@ -10,7 +10,4 @@
 
 Versioning
 - The version in `pyproject.toml` should be bumped whenever a release advances
-  the DESI × CMB lensing analysis.
-- `CITATION.cff` is automatically synchronized via pre-commit hooks:
-  - Version is synced from `pyproject.toml`
-  - Release date is automatically updated when version changes
+  the DESI × CMB lensing analysis, and 'CITATION.cff' version and release date should be updated accordingly.

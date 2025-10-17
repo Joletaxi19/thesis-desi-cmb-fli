@@ -17,7 +17,7 @@ rebuilt cleanly.
 ## What is already in place
 - Python package stub (`desi_cmb_fli`) exposing version metadata.
 - Automation hooks: MkDocs-based documentation, pytest configuration, formatting
-  via `ruff`, and a `sync_citation` helper script.
+  via `ruff`.
 - Repository structure for configs (`configs/`), generated figures (`figures/`),
   and documentation (`docs/`), ready to host the real pipeline components.
 - GitHub Actions for continuous testing and doc deployment—pushes trigger the
@@ -69,7 +69,7 @@ Once your work is ready, open a pull request to merge your branch into `main`.
 - Preview documentation: `mkdocs serve`
 
 ### What happens automatically
-- **On commit**: Code formatting & linting (ruff), citation sync, file validation
+- **On commit**: Code formatting & linting (ruff), file validation
 - **On push**: Full test suite via GitHub Actions, documentation build/deploy
 
 ## Building the cosmology analysis

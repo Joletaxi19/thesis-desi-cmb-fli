@@ -18,12 +18,11 @@ Install the package with development dependencies:
 pip install -e ".[dev]"
 ```
 
-### 3. Enable automation (CRITICAL)
+### 3. Enable automation
 Activate pre-commit hooks for automatic code formatting and validation:
 ```bash
 pre-commit install
 ```
-**Warning**: Without this step, automatic citation sync and code formatting won't work!
 
 ### 4. Optional: Documentation tools
 For local documentation preview:
@@ -38,7 +37,7 @@ After initial setup, development is fully automated:
 
 1. **Write code** in `src/desi_cmb_fli/`
 2. **Commit changes**: `git add . && git commit -m "Description"`
-   - Pre-commit hooks automatically format code and sync metadata
+   - Pre-commit hooks automatically format code
 3. **Push changes**: `git push`
    - GitHub Actions automatically run tests and deploy documentation
 
@@ -51,9 +50,8 @@ These commands are optional (automation handles them):
 
 ## What's automated
 
-- **Pre-commit hooks**: Code formatting (ruff), YAML validation, citation sync
+- **Pre-commit hooks**: Code formatting (ruff), YAML validation
 - **GitHub Actions**: Full test suite, documentation build/deploy on push
-- **Metadata sync**: `CITATION.cff` automatically updates from `pyproject.toml`
 
 After completing the initial setup, you only need to code and push!
 
