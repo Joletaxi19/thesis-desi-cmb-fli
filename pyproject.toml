@@ -44,11 +44,10 @@ dev = [
   "matplotlib",
   "scipy",
   "pyyaml",
-  "tomli",
   "jax",
   "numpyro",
   "jaxlib",
-  "panda",
+  "pandas",
 ]
 docs = [
   "mkdocs",
