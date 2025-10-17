@@ -1,5 +1,10 @@
-"""Top-level package for desi_cmb_fli."""
+"""Top-level package metadata exposed by desi_cmb_fli."""
 
-from importlib.metadata import version
+from importlib.metadata import PackageNotFoundError, version
 
-__version__ = version("desi-cmb-fli")
+try:
+	__version__ = version("desi-cmb-fli")
+except PackageNotFoundError:
+	__version__ = "0.1.0"
+
+__all__ = ["__version__"]

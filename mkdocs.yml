@@ -3,7 +3,6 @@ theme:
   name: material
 nav:
   - Overview: index.md
-  - Getting Started: getting_started.md
   - Pipeline Blueprint: pipeline.md
   - Implementation Roadmap: roadmap.md
   - Data Access Plan: data_access.md

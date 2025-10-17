@@ -26,27 +26,32 @@ rebuilt cleanly.
 
 ## Getting started
 
-### Initial setup (one-time)
-1. **Create and activate environment**:
-   ```bash
-   conda env create -f env/environment.yml
-   conda activate desi-cmb-fli
-   ```
+Follow these steps to get a fully functional development environment from a fresh clone:
 
-2. **Install package with development tools**:
-   ```bash
-   pip install -e ".[dev]"
-   ```
+1. **Create and activate the conda environment**
+  ```bash
+  conda env create -f env/environment.yml
+  conda activate desi-cmb-fli
+  ```
 
-3. **Enable automation hooks** (critical!):
-   ```bash
-   pre-commit install
-   ```
+2. **Install the package with tooling + analysis dependencies**
+  ```bash
+  pip install -e ".[dev]"
+  ```
+  The `dev` extra bundles pytest, ruff, pre-commit, Jupyter, JAX/NumPyro, and other numerics so every required tool is available in a single command.
 
-4. **Optional: Install documentation dependencies**:
-   ```bash
-   pip install -e ".[docs]"
-   ```
+3. **Enable automation hooks**
+  ```bash
+  pre-commit install
+  ```
+  This ensures formatting and linting run automatically before each commit.
+
+4. **Optional: build documentation locally**
+  ```bash
+  pip install -e ".[docs]"
+  mkdocs serve
+  ```
+  Use this only if you need the MkDocs site preview; it is not required for running tests or notebooks.
 
 ### Development workflow
 After initial setup, the workflow is fully automated. **It is recommended to use feature branches for development**:
