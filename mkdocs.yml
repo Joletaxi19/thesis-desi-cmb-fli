@@ -2,7 +2,7 @@ site_name: thesis-desi-cmb-fli
 theme:
   name: material
 nav:
-  - Overview: index.md
+  - Overview: overview.md
   - Pipeline Blueprint: pipeline.md
   - Implementation Roadmap: roadmap.md
   - Data Access Plan: data_access.md
