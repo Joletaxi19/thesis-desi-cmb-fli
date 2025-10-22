@@ -30,7 +30,18 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Astronomy",
     "Topic :: Scientific/Engineering :: Physics",
 ]
-dependencies = []
+dependencies = [
+  "numpy>=1.26",
+  "scipy>=1.11",
+  "pandas>=2.1",
+  "pyyaml>=6.0",
+  "jax>=0.4.23",
+  "jaxlib>=0.4.23",
+  "numpyro>=0.13",
+  "jaxpm>=0.4.0",
+  "jax-cosmo>=0.3.2",
+  "mpi4jax>=0.3.15",
+]
 
 [project.optional-dependencies]
 dev = [

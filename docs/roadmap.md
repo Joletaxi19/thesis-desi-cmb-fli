@@ -5,6 +5,8 @@ the DESI × CMB lensing field-level inference pipeline.
 
 Suggested checkpoints:
 
+0. **NERSC foundations** – environment recipe, Perlmutter SLURM templates, and
+   documented storage locations for DESI inputs and scratch outputs.
 1. **Data interfaces** – wrappers for DESI redshift catalogs, masks, and
    Planck/ACT convergence maps, including metadata and QA summaries.
 2. **Simulation prototypes** – minimal forward models (Gaussian or N-body

@@ -53,6 +53,11 @@ Follow these steps to get a fully functional development environment from a fres
   ```
   Use this only if you need the MkDocs site preview; it is not required for running tests or notebooks.
 
+  5. **NERSC users**
+    Review `docs/hpc.md` before running jobs on Perlmutter. The document
+    summarises environment activation, GPU wheel installation, and the shared
+    storage paths the repository expects.
+
 ### Development workflow
 After initial setup, the workflow is fully automated. **It is recommended to use feature branches for development**:
 ```bash
@@ -66,6 +71,11 @@ git push origin my-feature-branch  # ← Auto-testing & doc deployment
 ```
 
 Once your work is ready, open a pull request to merge your branch into `main`.
+
+### Running on NERSC
+- Configure your project- and user-specific details in `configs/nersc/perlmutter.yml`.
+- Submit batch jobs using the templates under `configs/nersc/slurm/` (see `docs/hpc.md`).
+- Store DESI inputs and generated products on `/global/cfs/cdirs/...` and `/pscratch/...` as documented in `docs/data_access.md`.
 
 ### Manual commands (optional)
 - Run tests locally: `pytest`

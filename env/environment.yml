@@ -3,5 +3,15 @@ channels:
   - conda-forge
 dependencies:
   - python=3.11
-  - pip
   - ipykernel
+  - numpy
+  - scipy
+  - pandas
+  - pip
+  - pip:
+      - jax[cpu]
+      - jaxlib
+      - numpyro
+      - jaxpm
+      - jax-cosmo
+      - mpi4jax

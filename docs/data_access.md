@@ -10,14 +10,19 @@ implemented, acquisition steps should be documented for each dataset:
 - **ACT DR6+ CMB lensing** – access requirements and calibration steps required
   for cross-correlation with DESI.
 
-A recommended local layout is:
+All data handling occurs on NERSC systems rather than in a local `data/`
+directory. Populate the following shared paths (or adapt `configs/nersc/perlmutter.yml`
+if your allocation uses different locations):
 
 ```
-data/
-|- raw/       # Read-only copies of official DESI and CMB lensing products
-|- interim/   # Cached or down-sampled intermediates for development work
-`- processed/ # Analysis-ready maps, masks, and summary statistics
+/global/cfs/cdirs/desi/users/<username>/desi-cmb-fli/inputs/    # Read-only DESI catalogs, masks
+/pscratch/sd/<u>/<username>/desi-cmb-fli/interim/               # Cached development products
+/pscratch/sd/<u>/<username>/desi-cmb-fli/processed/             # Analysis-ready summaries and chains
 ```
 
-For reproducibility, checksums, licences, and any proprietary access
-constraints should accompany the acquisition instructions.
+The `<u>` placeholder is the first character of your NERSC username, matching
+NERSC's scratch path convention.
+
+Document the provenance of each file (checksums, licences, access controls)
+alongside the instructions you record here so that collaborators can reproduce
+your environment on Perlmutter.

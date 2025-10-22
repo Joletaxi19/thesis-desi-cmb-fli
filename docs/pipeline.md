@@ -17,6 +17,10 @@ cover the following stages:
 - **Reporting**: producing reproducible figures, tables, and documentation to
   support thesis deliverables and eventual publications.
 
+Field-level inference will run primarily on NERSC (Perlmutter). Configuration
+files living under `configs/nersc/` describe queue, storage, and environment
+setup; see `docs/hpc.md` for operational details.
+
 The current repository provides only the scaffolding (package layout, tests,
 MkDocs, CI). Each stage should be populated under `src/desi_cmb_fli/` as the
 thesis work advances.
