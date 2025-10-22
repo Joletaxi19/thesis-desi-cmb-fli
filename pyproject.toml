@@ -54,7 +54,7 @@ analysis = [
   "numpyro>=0.13",
   "jaxpm==0.1.6",
   "mpi4jax>=0.3.15",
-  "jax-cosmo @ git+https://github.com/DifferentiableUniverseInitiative/jax_cosmo@main",
+  "jax-cosmo @ git+https://github.com/DifferentiableUniverseInitiative/jax_cosmo@master",
 ]
 docs = [
   "mkdocs",

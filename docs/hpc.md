@@ -16,12 +16,13 @@ project details before launching.
    ```bash
    module load python
    module load cudatoolkit
+   source "$(dirname $(dirname $CONDA_EXE))/etc/profile.d/conda.sh"
    ```
 3. Create the thesis environment inside `$SCRATCH/envs` (or another writable
   location) using the repository recipe:
   ```bash
   mkdir -p ${SCRATCH}/envs
-  conda env create -p ${SCRATCH}/envs/desi-cmb-fli -f env/environment.yml
+  conda env create --solver classic -p ${SCRATCH}/envs/desi-cmb-fli -f env/environment.yml
   conda activate ${SCRATCH}/envs/desi-cmb-fli
   pip install -e ".[dev,analysis]"
   ```
