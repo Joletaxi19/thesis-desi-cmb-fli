@@ -9,9 +9,9 @@ dependencies:
   - pandas
   - pip
   - pip:
-      - jax[cpu]
-      - jaxlib
-      - numpyro
-      - jaxpm
-      - jax-cosmo
-      - mpi4jax
+    - "jax[cpu]"
+    - jaxlib
+    - numpyro
+    - jaxpm==0.1.6
+    - jax-cosmo
+    - mpi4jax
