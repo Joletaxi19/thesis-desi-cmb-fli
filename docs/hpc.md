@@ -23,7 +23,7 @@ project details before launching.
   mkdir -p ${SCRATCH}/envs
   conda env create -p ${SCRATCH}/envs/desi-cmb-fli -f env/environment.yml
   conda activate ${SCRATCH}/envs/desi-cmb-fli
-  pip install -e ".[dev]"
+  pip install -e ".[dev,analysis]"
   ```
 4. Replace CPU JAX wheels with the GPU build once inside the login node:
    ```bash

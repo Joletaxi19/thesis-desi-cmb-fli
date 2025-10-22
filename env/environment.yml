@@ -13,5 +13,5 @@ dependencies:
     - jaxlib
     - numpyro
     - jaxpm==0.1.6
-    - jax-cosmo
+    - "jax-cosmo @ git+https://github.com/DifferentiableUniverseInitiative/jax_cosmo@main"
     - mpi4jax

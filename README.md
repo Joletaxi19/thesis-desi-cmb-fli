@@ -34,11 +34,15 @@ Follow these steps to get a fully functional development environment from a fres
   conda activate desi-cmb-fli
   ```
 
-2. **Install the package with tooling + analysis dependencies**
+2. **Install the package with tooling dependencies**
   ```bash
   pip install -e ".[dev]"
   ```
-  The `dev` extra bundles pytest, ruff, pre-commit, Jupyter, JAX/NumPyro, and other numerics so every required tool is available in a single command.
+  The `dev` extra bundles pytest, ruff, pre-commit, and notebook tooling. Add the
+  `analysis` extra when you need the JAX/NumPyro simulation stack:
+  ```bash
+  pip install -e ".[analysis]"
+  ```
 
 3. **Enable automation hooks**
   ```bash
