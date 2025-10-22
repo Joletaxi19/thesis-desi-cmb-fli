@@ -25,6 +25,9 @@ project details before launching.
   conda env create --solver classic -p ${SCRATCH}/envs/desi-cmb-fli -f env/environment.yml
   conda activate ${SCRATCH}/envs/desi-cmb-fli
   pip install -e ".[dev,analysis]"
+  # Optional: install a private Jupyter/Lab stack if you do not rely on the
+  # site-wide deployment.
+  pip install -e ".[notebooks]"
   ```
 4. Replace CPU JAX wheels with the GPU build once inside the login node:
    ```bash

@@ -43,7 +43,6 @@ dev = [
   "ruff",
   "mypy",
   "pre-commit",
-  "jupyter",
   "ipykernel",
   "matplotlib",
   "pandas>=2.1",
@@ -55,6 +54,10 @@ analysis = [
   "jaxpm==0.1.6",
   "mpi4jax>=0.3.15",
   "jax-cosmo @ git+https://github.com/DifferentiableUniverseInitiative/jax_cosmo@master",
+]
+notebooks = [
+  "jupyter>=1.0",
+  "jupyterlab>=4.0",
 ]
 docs = [
   "mkdocs",
