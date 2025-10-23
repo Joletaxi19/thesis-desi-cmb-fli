@@ -29,18 +29,18 @@ rebuilt cleanly.
 Follow these steps to get a fully functional development environment from a fresh clone:
 
 1. **Create and activate the conda environment**
-  ```bash
+  ```
   conda env create -f env/environment.yml
   conda activate desi-cmb-fli
   ```
 
 2. **Install the package**
-  ```bash
+  ```
   pip install -e .
   ```
 
 3. **Enable automation hooks**
-  ```bash
+  ```
   pre-commit install
   ```
   This ensures formatting and linting run automatically before each commit.

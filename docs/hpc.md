@@ -12,24 +12,24 @@ project details before launching.
 ## Environment bootstrap
 1. Log in to Perlmutter via `ssh username@perlmutter.nersc.gov`.
 2. Load the Python module and initialize conda:
-   ```bash
+   ```
    module load python
    source /global/common/software/desi/users/adematti/perlmutter/cosmodesiconda/20250331-1.0.0/conda/etc/profile.d/conda.sh
    ```
 3. Create the thesis environment inside `$SCRATCH/envs` (or another writable
   location) using the repository recipe:
-  ```bash
+  ```
   mkdir -p ${SCRATCH}/envs
   conda env create --solver libmamba -p ${SCRATCH}/envs/desi-cmb-fli -f env/environment.yml
   conda activate ${SCRATCH}/envs/desi-cmb-fli
   pip install -e .
   ```
 4. Install the CUDA-enabled JAX build compatible with Perlmutter's GPUs:
-    ```bash
+    ```
     pip install "jax[cuda12_pip]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
     ```
 5. Enable pre-commit hooks to automatically check formatting and linting:
-  ```bash
+  ```
   pre-commit install
   ```
 
