@@ -34,14 +34,9 @@ Follow these steps to get a fully functional development environment from a fres
   conda activate desi-cmb-fli
   ```
 
-2. **Install the package with tooling dependencies**
+2. **Install the package**
   ```bash
-  pip install -e ".[dev]"
-  ```
-  The `dev` extra bundles pytest, ruff, pre-commit, and plotting utilities. Add the
-  `analysis` extra when you need the JAX/NumPyro simulation stack:
-  ```bash
-  pip install -e ".[analysis]"
+  pip install -e .
   ```
 
 3. **Enable automation hooks**
@@ -50,15 +45,8 @@ Follow these steps to get a fully functional development environment from a fres
   ```
   This ensures formatting and linting run automatically before each commit.
 
-4. **Optional: build documentation locally**
-  ```bash
-  pip install -e ".[docs]"
-  mkdocs serve
-  ```
-  Use this only if you need the MkDocs site preview; it is not required for running tests or notebooks.
-
-  5. **NERSC users**
-    Review `docs/hpc.md` before running jobs on Perlmutter.
+4. **NERSC users**
+  Review `docs/hpc.md` before running jobs on Perlmutter.
 
 ### Development workflow
 After initial setup, the workflow is fully automated. **It is recommended to use feature branches for development**:

@@ -22,9 +22,13 @@ project details before launching.
   mkdir -p ${SCRATCH}/envs
   conda env create --solver classic -p ${SCRATCH}/envs/desi-cmb-fli -f env/environment.yml
   conda activate ${SCRATCH}/envs/desi-cmb-fli
-  pip install -e ".[dev,analysis]"
+  pip install -e .
   ```
-4. Enable pre-commit hooks to automatically check formatting and linting:
+4. Install the CUDA-enabled JAX build compatible with Perlmutter's GPUs:
+    ```bash
+    pip install "jax[cuda12_pip]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
+    ```
+5. Enable pre-commit hooks to automatically check formatting and linting:
   ```bash
   pre-commit install
   ```

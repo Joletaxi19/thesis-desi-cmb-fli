@@ -2,12 +2,12 @@ system: perlmutter
 username: "jhawla"
 project_id: desi
 queue: regular
-constraint: cpu
+constraint: gpu
 nodes: 1
 walltime: "04:00:00"
 environment:
   # Adjust if you keep the environment elsewhere
-  activate: "source /global/common/software/nersc/conda/etc/profile.d/conda.sh && conda activate /pscratch/sd/j/jhawla/envs/desi-cmb-fli"
+  activate: "source /global/common/software/desi/users/adematti/perlmutter/cosmodesiconda/20250331-1.0.0/conda/etc/profile.d/conda.sh && conda activate /pscratch/sd/j/jhawla/envs/desi-cmb-fli"
 storage:
   project_root: "/global/cfs/cdirs/desi/users/jhawla/desi-cmb-fli"
   scratch_root: "/pscratch/sd/j/jhawla/desi-cmb-fli"
@@ -15,7 +15,7 @@ storage:
   working_dir: "${scratch_root}/runs"
 runtime:
   python: "python"
-  entrypoint: "-m desi_cmb_fli"
+  entrypoint: "scripts/check_desi_ingest.py"
   extra_args: ""
 notes:
   - "Replace placeholders before submitting jobs."

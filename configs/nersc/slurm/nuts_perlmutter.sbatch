@@ -8,19 +8,12 @@
 #SBATCH --time=00:03:00
 #SBATCH --output=%x-%j.out
 
-# Update this path if you relocate the YAML file.
-CONFIG_FILE="$(dirname "$0")/../perlmutter.yml"
-
 module load python
 
 # Activate the thesis environment (placeholder; sync with configs/nersc/perlmutter.yml)
 source /global/common/software/desi/users/adematti/perlmutter/cosmodesiconda/20250331-1.0.0/conda/etc/profile.d/conda.sh
 conda activate ${SCRATCH}/envs/desi-cmb-fli
 
-# Provide the configuration to the Python entry point as an environment variable.
-export DESI_CMB_FLI_CONFIG="${CONFIG_FILE}"
-
-echo "Using configuration: ${DESI_CMB_FLI_CONFIG}"
 which python
 python --version
 

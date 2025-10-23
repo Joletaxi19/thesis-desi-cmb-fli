@@ -6,5 +6,24 @@ dependencies:
   - ipykernel
   - numpy
   - scipy
-  - pandas
+  - pandas>=2.1
+  - fitsio
+  - pyyaml
+  - ipykernel
+  - matplotlib
+  - pytest
+  - pytest-cov
+  - ruff
+  - mypy
+  - pre-commit
+  - mkdocs
+  - mkdocs-material
+  - pymdown-extensions
   - pip
+  - pip:
+    - numpyro>=0.13
+    - jax>=0.4.23
+    - jaxlib>=0.4.23
+    - jaxpm==0.1.6
+    - mpi4jax>=0.3.15
+    - "jax-cosmo @ git+https://github.com/DifferentiableUniverseInitiative/jax_cosmo@master"
