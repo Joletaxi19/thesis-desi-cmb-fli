@@ -43,11 +43,6 @@ Follow these steps to get a fully functional development environment from a fres
   ```bash
   pip install -e ".[analysis]"
   ```
-  If you need a private Jupyter/JupyterLab installation (rather than the
-  site-wide NERSC deployment), install the optional notebook extra as well:
-  ```bash
-  pip install -e ".[notebooks]"
-  ```
 
 3. **Enable automation hooks**
   ```bash
