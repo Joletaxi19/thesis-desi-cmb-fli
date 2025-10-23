@@ -20,7 +20,7 @@ project details before launching.
   location) using the repository recipe:
   ```bash
   mkdir -p ${SCRATCH}/envs
-  conda env create --solver classic -p ${SCRATCH}/envs/desi-cmb-fli -f env/environment.yml
+  conda env create --solver libmamba -p ${SCRATCH}/envs/desi-cmb-fli -f env/environment.yml
   conda activate ${SCRATCH}/envs/desi-cmb-fli
   pip install -e .
   ```
