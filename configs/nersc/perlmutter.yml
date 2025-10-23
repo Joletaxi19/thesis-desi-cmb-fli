@@ -1,6 +1,6 @@
 system: perlmutter
 username: "jhawla"
-project_id: m####
+project_id: desi
 queue: regular
 constraint: gpu
 nodes: 1

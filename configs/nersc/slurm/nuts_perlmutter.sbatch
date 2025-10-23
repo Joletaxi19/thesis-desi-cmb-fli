@@ -1,6 +1,6 @@
 #!/bin/bash -l
 #SBATCH --job-name=desi-cmb-fli
-#SBATCH --account=m####
+#SBATCH --account=desi
 #SBATCH --partition=regular
 #SBATCH --constraint=gpu
 #SBATCH --nodes=1
@@ -15,7 +15,7 @@ module load python
 module load cudatoolkit
 
 # Activate the thesis environment (placeholder; sync with configs/nersc/perlmutter.yml)
-source /global/common/software/nersc/conda/etc/profile.d/conda.sh
+source /global/common/software/desi/users/adematti/perlmutter/cosmodesiconda/20250331-1.0.0/conda/etc/profile.d/conda.sh
 conda activate ${SCRATCH}/envs/desi-cmb-fli
 
 # Provide the configuration to the Python entry point as an environment variable.

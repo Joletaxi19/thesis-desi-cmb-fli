@@ -8,7 +8,6 @@ project details before launching.
 - Ensure your NERSC account is active and associated with the DESI allocation.
 - Confirm access to the `cosmo` software stack and shared project spaces under
   `/global/cfs/cdirs/`.
-- Keep your project ID handy; the example configs assume a placeholder `m####`.
 
 ## Environment bootstrap
 1. Log in to Perlmutter via `ssh username@perlmutter.nersc.gov`.
@@ -16,7 +15,7 @@ project details before launching.
    ```bash
    module load python
    module load cudatoolkit
-   source "$(dirname $(dirname $CONDA_EXE))/etc/profile.d/conda.sh"
+   source /global/common/software/desi/users/adematti/perlmutter/cosmodesiconda/20250331-1.0.0/conda/etc/profile.d/conda.sh
    ```
 3. Create the thesis environment inside `$SCRATCH/envs` (or another writable
   location) using the repository recipe:
