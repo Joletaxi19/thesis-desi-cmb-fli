@@ -58,9 +58,7 @@ Follow these steps to get a fully functional development environment from a fres
   Use this only if you need the MkDocs site preview; it is not required for running tests or notebooks.
 
   5. **NERSC users**
-    Review `docs/hpc.md` before running jobs on Perlmutter. The document
-    summarises environment activation, GPU wheel installation, and the shared
-    storage paths the repository expects.
+    Review `docs/hpc.md` before running jobs on Perlmutter.
 
 ### Development workflow
 After initial setup, the workflow is fully automated. **It is recommended to use feature branches for development**:

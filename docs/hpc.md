@@ -25,6 +25,10 @@ project details before launching.
   conda activate ${SCRATCH}/envs/desi-cmb-fli
   pip install -e ".[dev,analysis]"
   ```
+4. Enable pre-commit hooks to automatically check formatting and linting:
+  ```bash
+  pre-commit install
+  ```
 
 ## Shared storage layout
 - **Permanent project space**: `/global/cfs/cdirs/desi/users/<username>/desi-cmb-fli`
