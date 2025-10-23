@@ -2,7 +2,7 @@ system: perlmutter
 username: "jhawla"
 project_id: desi
 queue: regular
-constraint: gpu
+constraint: cpu
 nodes: 1
 walltime: "04:00:00"
 environment:

@@ -47,6 +47,7 @@ dev = [
   "ipykernel",
   "matplotlib",
   "pandas>=2.1",
+  "ruamel.yaml",
 ]
 analysis = [
   "jax>=0.4.23",
