@@ -11,10 +11,9 @@ project details before launching.
 
 ## Environment bootstrap
 1. Log in to Perlmutter via `ssh username@perlmutter.nersc.gov`.
-2. Load the CUDA-enabled Python stack provided by NERSC:
+2. Load the Python module and initialize conda:
    ```bash
    module load python
-   module load cudatoolkit
    source /global/common/software/desi/users/adematti/perlmutter/cosmodesiconda/20250331-1.0.0/conda/etc/profile.d/conda.sh
    ```
 3. Create the thesis environment inside `$SCRATCH/envs` (or another writable
