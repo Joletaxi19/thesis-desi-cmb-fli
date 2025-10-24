@@ -22,24 +22,17 @@ pip install --upgrade "jax[cuda12]" -f https://storage.googleapis.com/jax-releas
 pre-commit install
 ```
 
-**Add to `~/.bashrc`** (loads CUDA drivers and activates environment):
-```bash
-# NERSC GPU setup for JAX
-module load cudatoolkit/12.4
-export LD_LIBRARY_PATH=$(echo ${CONDA_PREFIX}/lib/python3.11/site-packages/nvidia/*/lib | tr ' ' ':'):${LD_LIBRARY_PATH}
-```
-
 ## Daily Usage
 
-With `.bashrc` configured as above, just:
-```bash
-source ~/.bashrc
-```
-
-Otherwise manually:
+Load environment each session:
 ```bash
 source /global/common/software/desi/users/adematti/perlmutter/cosmodesiconda/20250331-1.0.0/conda/etc/profile.d/conda.sh
 conda activate ${SCRATCH}/envs/desi-cmb-fli
+```
+
+## GPU Setup
+
+```bash
 module load cudatoolkit/12.4
 export LD_LIBRARY_PATH=$(echo ${CONDA_PREFIX}/lib/python3.11/site-packages/nvidia/*/lib | tr ' ' ':'):${LD_LIBRARY_PATH}
 ```
@@ -52,22 +45,7 @@ python -c "import jax; print(jax.devices())"  # Should show [CudaDevice(id=0)]
 
 ## Batch Jobs
 
-Template script structure:
-```bash
-#!/bin/bash
-#SBATCH --nodes=1
-#SBATCH --constraint=gpu
-#SBATCH --gpus=1
-#SBATCH --account=desi
-
-module load cudatoolkit/12.4
-source /global/common/software/desi/users/adematti/perlmutter/cosmodesiconda/20250331-1.0.0/conda/etc/profile.d/conda.sh
-conda activate ${SCRATCH}/envs/desi-cmb-fli
-export LD_LIBRARY_PATH=$(echo ${CONDA_PREFIX}/lib/python3.11/site-packages/nvidia/*/lib | tr ' ' ':'):${LD_LIBRARY_PATH}
-
-# Your code here
-python your_script.py
-```
+Template script structure: `configs/nersc/slurm/template_perlmutter.sbatch`
 
 Submit with: `sbatch script.sbatch`
 

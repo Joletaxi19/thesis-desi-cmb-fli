@@ -11,8 +11,7 @@ implemented, acquisition steps should be documented for each dataset:
   for cross-correlation with DESI.
 
 All data handling occurs on NERSC systems rather than in a local `data/`
-directory. Populate the following shared paths (or adapt `configs/nersc/perlmutter.yml`
-if your allocation uses different locations):
+directory. Populate the following shared paths:
 
 ```
 /global/cfs/cdirs/desi/users/<username>/desi-cmb-fli/inputs/    # Read-only DESI catalogs, masks
