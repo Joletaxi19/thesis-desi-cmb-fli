@@ -1,64 +1,75 @@
-# NERSC & Perlmutter quickstart
+# NERSC Perlmutter Setup
 
-This note collects the minimal information needed to run the thesis workflow on
-NERSC, with a focus on Perlmutter GPU jobs. Update the placeholders with your
-project details before launching.
+Quick guide for running on NERSC Perlmutter GPU nodes.
 
-## Accounts and projects
-- Ensure your NERSC account is active and associated with the DESI allocation.
-- Confirm access to the `cosmo` software stack and shared project spaces under
-  `/global/cfs/cdirs/`.
+## Initial Setup (once)
 
-## Environment bootstrap
-1. Log in to Perlmutter via `ssh username@perlmutter.nersc.gov`.
-2. Load the Python module and initialize conda:
-```
-module load python
+```bash
+# 1. Log in and load modules
+ssh username@perlmutter.nersc.gov
+module load python cudatoolkit/12.4
 source /global/common/software/desi/users/adematti/perlmutter/cosmodesiconda/20250331-1.0.0/conda/etc/profile.d/conda.sh
-```
-3. Create the thesis environment inside `$SCRATCH/envs` (or another writable
-  location) using the repository recipe:
-```
+
+# 2. Create conda environment
 mkdir -p ${SCRATCH}/envs
 conda env create --solver libmamba -p ${SCRATCH}/envs/desi-cmb-fli -f env/environment.yml
 conda activate ${SCRATCH}/envs/desi-cmb-fli
 pip install -e .
-```
-4. Install the CUDA-enabled JAX build compatible with Perlmutter's GPUs:
-```
-pip install "jax[cuda12_pip]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
-```
-5. Enable pre-commit hooks to automatically check formatting and linting:
-```
+
+# 3. Install JAX with GPU support
+pip install --upgrade "jax[cuda12]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
+
+# 4. Enable git hooks
 pre-commit install
 ```
 
-## Shared storage layout
-- **Permanent project space**: `/global/cfs/cdirs/desi/users/<username>/desi-cmb-fli`
-  for curated inputs, configs, and checkpoints shared across jobs.
-- **Scratch (recommended for large outputs)**: `/pscratch/sd/<u>/<username>/desi-cmb-fli`
-  for transient products such as sampler chains or mock realizations.
-- The repository assumes those absolute paths instead of a local `data/`
-  directory. Update `configs/nersc/perlmutter.yml` if your team maintains a
-  different convention.
-  Replace `<u>` with the first letter of your username.
+**Add to `~/.bashrc`** (required for GPU):
+```bash
+export LD_LIBRARY_PATH=$(echo ${CONDA_PREFIX}/lib/python3.11/site-packages/nvidia/*/lib | tr ' ' ':'):${LD_LIBRARY_PATH}
+```
 
-## Batch submission
-- Populate `configs/nersc/perlmutter.yml` with your NERSC username, project ID,
-  and preferred queue.
-- Use the template `configs/nersc/slurm/nuts_perlmutter.sbatch` as a starting
-  point for launching NumPyro/NUTS chains. The script reads the YAML config at
-  runtime to locate data, scratch areas, and environment activation commands.
-- Submit jobs via `sbatch configs/nersc/slurm/nuts_perlmutter.sbatch`. Monitor
-  with `squeue -u <username>`.
+## Daily Usage
 
-## Data integrity and transfers
-- Pull DESI catalogs and masks directly from curated project directories on
-  NERSC; document the exact source in `docs/data_access.md`.
-- For small development subsets, consider copying to `/pscratch/.../cache/` and
-  referencing that location in the appropriate config file.
-- Use `hsi`/`htar` or Globus for any transfers that must leave NERSC.
+```bash
+module load python cudatoolkit/12.4
+source /global/common/software/desi/users/adematti/perlmutter/cosmodesiconda/20250331-1.0.0/conda/etc/profile.d/conda.sh
+conda activate ${SCRATCH}/envs/desi-cmb-fli
+```
 
-Keep this document updated as NERSC modules or allocation details evolve. Short
-notes about module versions or queue changes belong here to prevent divergence
-between the documentation and operational reality.
+**Test GPU** (requires GPU node):
+```bash
+salloc --nodes 1 --qos interactive --time 00:30:00 --constraint gpu --gpus 1 --account=desi
+python -c "import jax; print(jax.devices())"  # Should show [CudaDevice(id=0)]
+```
+
+## Batch Jobs
+
+Template script structure:
+```bash
+#!/bin/bash
+#SBATCH --nodes=1
+#SBATCH --constraint=gpu
+#SBATCH --gpus=1
+#SBATCH --account=desi
+
+module load python cudatoolkit/12.4
+source /global/common/.../conda.sh
+conda activate ${SCRATCH}/envs/desi-cmb-fli
+
+# Your code here
+python your_script.py
+```
+
+Submit with: `sbatch script.sbatch`
+
+## Storage
+
+- **Project data**: `/global/cfs/cdirs/desi/users/<username>/desi-cmb-fli`
+- **Scratch (large outputs)**: `/pscratch/sd/<u>/<username>/desi-cmb-fli`
+
+Update paths in `configs/nersc/perlmutter.yml` if needed.
+
+## Notes
+
+- **jaxpm version**: Project uses `jaxpm==0.0.2` (stable). Newer versions (0.1.x+) have breaking API changes.
+- **GPU on login nodes**: JAX falls back to CPU on login nodes (expected). GPU only works on compute nodes.

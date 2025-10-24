@@ -63,7 +63,6 @@ jobs:
         id: deployment
         uses: actions/deploy-pages@v4
 
-  # Job pour vérifier la doc sur les PRs (sans déployer)
   check:
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'

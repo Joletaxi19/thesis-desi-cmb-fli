@@ -24,58 +24,25 @@ rebuilt cleanly.
   test suite and documentation builds rerun automatically when relevant content
   changes.
 
-## Getting started
+## Quick Start
 
-Follow these steps to get a fully functional development environment from a fresh clone:
-
-1. **Create and activate the conda environment**
-  ```
-  conda env create -f env/environment.yml
-  conda activate desi-cmb-fli
-  ```
-
-2. **Install the package**
-  ```
-  pip install -e .
-  ```
-
-3. **Enable automation hooks**
-  ```
-  pre-commit install
-  ```
-  This ensures formatting and linting run automatically before each commit.
-
-4. **NERSC users**
-  Review `docs/hpc.md` before running jobs on Perlmutter.
-
-### Development workflow
-After initial setup, the workflow is fully automated. **It is recommended to use feature branches for development**:
+**Local development** (CPU only):
 ```bash
-# Create and switch to a new branch for your feature or fix
-git checkout -b my-feature-branch
-
-# Write your code...
-git add .
-git commit -m "Your changes"  # ← Auto-formatting & validation
-git push origin my-feature-branch  # ← Auto-testing & doc deployment
+conda env create -f env/environment.yml
+conda activate desi-cmb-fli
+pip install -e .
+pre-commit install
 ```
 
-Once your work is ready, open a pull request to merge your branch into `main`.
+**NERSC Perlmutter** (with GPU): See `docs/hpc.md` for complete setup.
 
-### Running on NERSC
-- Configure your project- and user-specific details in `configs/nersc/perlmutter.yml`.
-- Submit batch jobs using the templates under `configs/nersc/slurm/` (see `docs/hpc.md`).
-- Store DESI inputs and generated products on `/global/cfs/cdirs/...` and `/pscratch/...` as documented in `docs/data_access.md`.
+## Development
 
-### Manual commands (optional)
-- Run tests locally: `pytest`
-- Check code style: `ruff check .`
-- Format code: `ruff format .`
-- Preview documentation: `mkdocs serve`
+**Run tests**: `pytest`
+**Format code**: `ruff format .`
+**Preview docs**: `mkdocs serve`
 
-### What happens automatically
-- **On commit**: Code formatting & linting (ruff), file validation
-- **On push**: Full test suite via GitHub Actions, documentation build/deploy
+Git hooks automatically format code on commit. CI runs tests on push.
 
 ## Building the cosmology analysis
 - DESI/Planck/ACT interfaces and FLI likelihood modules are intended to reside
