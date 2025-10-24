@@ -5,9 +5,8 @@ Quick guide for running on NERSC Perlmutter GPU nodes.
 ## Initial Setup (once)
 
 ```bash
-# 1. Log in and load modules
+# 1. Log in and source conda
 ssh username@perlmutter.nersc.gov
-module load python cudatoolkit/12.4
 source /global/common/software/desi/users/adematti/perlmutter/cosmodesiconda/20250331-1.0.0/conda/etc/profile.d/conda.sh
 
 # 2. Create conda environment
@@ -23,17 +22,26 @@ pip install --upgrade "jax[cuda12]" -f https://storage.googleapis.com/jax-releas
 pre-commit install
 ```
 
-**Add to `~/.bashrc`** (required for GPU):
+**Add to `~/.bashrc`** (loads CUDA drivers and activates environment):
 ```bash
+# NERSC GPU setup for JAX
+module load cudatoolkit/12.4
 export LD_LIBRARY_PATH=$(echo ${CONDA_PREFIX}/lib/python3.11/site-packages/nvidia/*/lib | tr ' ' ':'):${LD_LIBRARY_PATH}
 ```
 
 ## Daily Usage
 
+With `.bashrc` configured as above, just:
 ```bash
-module load python cudatoolkit/12.4
+source ~/.bashrc
+```
+
+Otherwise manually:
+```bash
 source /global/common/software/desi/users/adematti/perlmutter/cosmodesiconda/20250331-1.0.0/conda/etc/profile.d/conda.sh
 conda activate ${SCRATCH}/envs/desi-cmb-fli
+module load cudatoolkit/12.4
+export LD_LIBRARY_PATH=$(echo ${CONDA_PREFIX}/lib/python3.11/site-packages/nvidia/*/lib | tr ' ' ':'):${LD_LIBRARY_PATH}
 ```
 
 **Test GPU** (requires GPU node):
@@ -52,9 +60,10 @@ Template script structure:
 #SBATCH --gpus=1
 #SBATCH --account=desi
 
-module load python cudatoolkit/12.4
-source /global/common/.../conda.sh
+module load cudatoolkit/12.4
+source /global/common/software/desi/users/adematti/perlmutter/cosmodesiconda/20250331-1.0.0/conda/etc/profile.d/conda.sh
 conda activate ${SCRATCH}/envs/desi-cmb-fli
+export LD_LIBRARY_PATH=$(echo ${CONDA_PREFIX}/lib/python3.11/site-packages/nvidia/*/lib | tr ' ' ':'):${LD_LIBRARY_PATH}
 
 # Your code here
 python your_script.py
