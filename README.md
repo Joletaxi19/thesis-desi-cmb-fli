@@ -38,7 +38,7 @@ pre-commit install
 
 ## Development
 
-**Run tests**: `pytest`
+**Run tests**: `pytest` (DESI tests auto-skip on non-NERSC systems)
 **Format code**: `ruff format .`
 **Preview docs**: `mkdocs serve`
 

@@ -66,8 +66,7 @@ Submit with: `sbatch script.sbatch`
 
 - **Project data**: `/global/cfs/cdirs/desi/users/<username>/desi-cmb-fli`
 - **Scratch (large outputs)**: `/pscratch/sd/<u>/<username>/desi-cmb-fli`
-
-Update paths in `configs/nersc/perlmutter.yml` if needed.
+- **DESI DR1 catalogs**: `/global/cfs/cdirs/desi/public/dr1/survey/catalogs/dr1/LSS/iron/LSScats/v1.5`
 
 ## Notes
 
