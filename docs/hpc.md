@@ -39,8 +39,8 @@ export LD_LIBRARY_PATH=$(echo ${CONDA_PREFIX}/lib/python3.11/site-packages/nvidi
 
 **Test GPU** (requires GPU node):
 ```bash
-salloc --nodes 1 --qos interactive --time 00:30:00 --constraint gpu --gpus 1 --account=desi
-python -c "import jax; print(jax.devices())"  # Should show [CudaDevice(id=0)]
+salloc --nodes 1 --qos interactive --time 00:03:00 --constraint gpu --gpus 1 --account=desi
+python -c "import jax; print(jax.devices())"  # Should show [CudaDevice(id=0), ...]
 ```
 
 ## Batch Jobs
