@@ -1,28 +1,12 @@
 # thesis-desi-cmb-fli
 
-Repository scaffold for a thesis project targeting **field-level inference (FLI)** on
-DESI galaxy samples cross-correlated with CMB lensing reconstructions from
-Planck and ACT. The scientific pipeline itself remains unimplemented; the
-supporting infrastructure has been preserved so the cosmological workflow can be
-rebuilt cleanly.
+Repository for a thesis project targeting **field-level inference (FLI)** on DESI galaxy samples cross-correlated with CMB lensing reconstructions from Planck and ACT.
 
 ## Thesis vision
 - Construction of a reproducible FLI workflow that ingests DESI galaxy
-  clustering data and CMB lensing maps (Planck PR4, ACT DR6+).
+  clustering data and CMB lensing maps (Planck PR4, ACT DR6).
 - Delivery of joint cosmological constraints from the cross-correlation of those
   observables, with clear validation and documentation.
-- Maintenance of publication-grade software practices (tests, docs, metadata)
-  throughout thesis development.
-
-## What is already in place
-- Python package stub (`desi_cmb_fli`) exposing version metadata.
-- Automation hooks: MkDocs-based documentation, pytest configuration, formatting
-  via `ruff`.
-- Repository structure for configs (`configs/`), generated figures (`figures/`),
-  and documentation (`docs/`), ready to host the real pipeline components.
-- GitHub Actions for continuous testing and doc deployment—pushes trigger the
-  test suite and documentation builds rerun automatically when relevant content
-  changes.
 
 ## Quick Start
 
@@ -38,24 +22,35 @@ pre-commit install
 
 ## Development
 
-**Run tests**: `pytest` (DESI tests auto-skip on non-NERSC systems)
+**Run tests**: `pytest`
 **Format code**: `ruff format .`
 **Preview docs**: `mkdocs serve`
 
 Git hooks automatically format code on commit. CI runs tests on push.
 
 ## Building the cosmology analysis
-- DESI/Planck/ACT interfaces and FLI likelihood modules are intended to reside
-  under `src/desi_cmb_fli/`.
-- Experiment configurations (tracer selections, mask definitions, inference
-  grids) should be tracked in `configs/` with lightweight examples committed to
-  the repository.
-- The `tests/` directory is expected to grow with unit, integration, and
-  regression checks covering the forward model, likelihood evaluations, and
-  validation diagnostics.
-- Scientific logic should be documented in `docs/`, including dataset handling,
-  field modeling choices, validation strategies, and interpretation of
-  cosmological posteriors.
+
+### Current Status
+
+**✅ Completed:**
+- **Initial Conditions** (`src/desi_cmb_fli/initial_conditions.py`): Gaussian random field generation for cosmological simulations
+  - Linear matter power spectrum computation via jax_cosmo
+  - 3D density field generation
+  - Validation tools for P(k) recovery
+  - Demo notebook
+
+**🚧 Next Steps:**
+- Gravitational evolution using jaxpm (particle-mesh solver)
+- Galaxy bias modeling
+- DESI/Planck/ACT data interfaces
+- Field-level likelihood implementation
+
+### Repository Structure
+- `src/desi_cmb_fli/`: Simulation and inference modules
+- `configs/`: Experiment configurations (tracer selections, masks, inference grids)
+- `tests/`: Unit, integration, and regression tests
+- `notebooks/`: Interactive demonstrations and tutorials
+- `docs/`: Scientific documentation and pipeline details
 
 ## Citation
 The project scaffold for the FLI × DESI × CMB lensing analysis should be cited

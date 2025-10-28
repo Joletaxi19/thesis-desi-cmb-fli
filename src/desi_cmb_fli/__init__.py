@@ -7,4 +7,7 @@ try:
 except PackageNotFoundError:
 	__version__ = "0.1.0"
 
-__all__ = ["__version__"]
+# Import main modules for convenience
+from . import initial_conditions
+
+__all__ = ["__version__", "initial_conditions"]

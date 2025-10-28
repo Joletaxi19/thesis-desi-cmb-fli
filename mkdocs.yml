@@ -4,7 +4,6 @@ theme:
 nav:
   - Overview: index.md
   - Pipeline Blueprint: pipeline.md
-  - Implementation Roadmap: roadmap.md
   - Data Access Plan: data_access.md
   - NERSC Quickstart: hpc.md
   - Contributing: contributing.md

@@ -24,9 +24,10 @@ classifiers = [
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Scientific/Engineering :: Astronomy",
     "Topic :: Scientific/Engineering :: Physics",
 ]
@@ -35,6 +36,10 @@ dependencies = [
   "scipy>=1.11",
   "pyyaml>=6.0",
   "fitsio>=1.2",
+  "jax>=0.4.20",
+  "jaxlib>=0.4.20",
+  "numpyro>=0.13",
+  "jaxpm==0.0.2",
 ]
 
 [project.optional-dependencies]
@@ -66,3 +71,7 @@ ignore = ["E203", "E266", "E501"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra -q --color=yes"
+filterwarnings = [
+    "ignore:pkg_resources is deprecated:UserWarning",
+    "ignore:Explicitly requested dtype.*is not available.*will be truncated:UserWarning",
+]
