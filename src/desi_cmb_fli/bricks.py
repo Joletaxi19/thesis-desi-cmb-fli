@@ -10,7 +10,8 @@ from desi_cmb_fli.nbody import a2f, a2g, invlaplace_kernel, rfftk
 from desi_cmb_fli.utils import cgh2rg, ch2rshape, rg2cgh, safe_div, std2trunc, trunc2std
 
 # [Planck2015 XIII](https://arxiv.org/abs/1502.01589) Table 4 final column (best fit)
-Planck15 = partial(Cosmology,
+Planck15 = partial(
+    Cosmology,
     Omega_c=0.2589,
     Omega_b=0.04860,
     Omega_k=0.0,
@@ -18,10 +19,12 @@ Planck15 = partial(Cosmology,
     n_s=0.9667,
     sigma8=0.8159,
     w0=-1.0,
-    wa=0.0,)
+    wa=0.0,
+)
 
 # [Planck 2018 VI](https://arxiv.org/abs/1807.06209) Table 2 final column (best fit)
-Planck18 = partial(Cosmology,
+Planck18 = partial(
+    Cosmology,
     # Omega_m = 0.3111
     Omega_c=0.2607,
     Omega_b=0.0490,
@@ -30,35 +33,46 @@ Planck18 = partial(Cosmology,
     n_s=0.9665,
     sigma8=0.8102,
     w0=-1.0,
-    wa=0.0,)
+    wa=0.0,
+)
 
 
-def lin_power_interp(cosmo=Cosmology, a=1., n_interp=256):
+def lin_power_interp(cosmo=Cosmology, a=1.0, n_interp=256):
     """
     Return a light emulation of the linear matter power spectrum.
     """
     ks = jnp.logspace(-4, 1, n_interp)
     logpows = jnp.log(jc.power.linear_matter_power(cosmo, ks, a=a))
+
     # Interpolate in semilogy space with logspaced k values, correctly handles k==0,
     # as interpolation in loglog space can produce nan gradients
     def pow_fn(x):
-        return jnp.exp(jnp.interp(x.reshape(-1), ks, logpows, left=-jnp.inf, right=-jnp.inf)).reshape(x.shape)
+        return jnp.exp(
+            jnp.interp(x.reshape(-1), ks, logpows, left=-jnp.inf, right=-jnp.inf)
+        ).reshape(x.shape)
+
     # pows = jc.power.linear_matter_power(cosmo, ks, a=a)
     # pow_fn = lambda x: jnp.interp(x.reshape(-1), ks, pows, left=0., right=0.).reshape(x.shape)
     return pow_fn
 
 
-def lin_power_mesh(cosmo:Cosmology, mesh_shape, box_shape, a=1., n_interp=256):
+def lin_power_mesh(cosmo: Cosmology, mesh_shape, box_shape, a=1.0, n_interp=256):
     """
     Return linear matter power spectrum field.
     """
     pow_fn = lin_power_interp(cosmo, a=a, n_interp=n_interp)
     kvec = rfftk(mesh_shape)
-    kmesh = sum((ki  * (m / box_len))**2 for ki, m, box_len in zip(kvec, mesh_shape, box_shape, strict=False))**0.5
-    return pow_fn(kmesh) * (mesh_shape / box_shape).prod() # from [Mpc/h]^3 to cell units
+    kmesh = (
+        sum(
+            (ki * (m / box_len)) ** 2
+            for ki, m, box_len in zip(kvec, mesh_shape, box_shape, strict=False)
+        )
+        ** 0.5
+    )
+    return pow_fn(kmesh) * (mesh_shape / box_shape).prod()  # from [Mpc/h]^3 to cell units
 
 
-def kaiser_posterior(delta_obs, cosmo:Cosmology, bE, a, box_shape, gxy_count, los=None):
+def kaiser_posterior(delta_obs, cosmo: Cosmology, bE, a, box_shape, gxy_count, los=None):
     """
     Return posterior mean and std fields of the linear matter field (at a=1) given the observed field,
     by assuming Kaiser model. All fields are in fourier space.
@@ -68,7 +82,7 @@ def kaiser_posterior(delta_obs, cosmo:Cosmology, bE, a, box_shape, gxy_count, lo
     pmeshk = lin_power_mesh(cosmo, mesh_shape, box_shape)
     boost = kaiser_boost(cosmo, a, bE, mesh_shape, los)
 
-    stds = (pmeshk / (1 + gxy_count * boost**2 * pmeshk))**.5
+    stds = (pmeshk / (1 + gxy_count * boost**2 * pmeshk)) ** 0.5
     # Also: stds = jnp.where(pmeshk==0., 0., pmeshk / (1 + gxy_count * evolve**2 * pmeshk))**.5
     means = stds**2 * gxy_count * boost * delta_obs
     return means, stds
@@ -78,37 +92,40 @@ def get_cosmology(**cosmo) -> Cosmology:
     """
     Return full cosmology object from cosmological params.
     """
-    return Planck18(Omega_c=cosmo['Omega_m'] - Planck18.keywords['Omega_b'],
-                    sigma8=cosmo['sigma8'])
+    return Planck18(Omega_c=cosmo["Omega_m"] - Planck18.keywords["Omega_b"], sigma8=cosmo["sigma8"])
 
 
-def samp2base(params:dict, config, inv=False, temp=1.) -> dict:
+def samp2base(params: dict, config, inv=False, temp=1.0) -> dict:
     """
     Transform sample params into base params.
     """
     out = {}
     for in_name, value in params.items():
         name = in_name if inv else in_name[:-1]
-        out_name = in_name+'_' if inv else in_name[:-1]
+        out_name = in_name + "_" if inv else in_name[:-1]
 
         conf = config[name]
-        low, high = conf.get('low', -jnp.inf), conf.get('high', jnp.inf)
-        loc_fid, scale_fid = conf['loc_fid'], conf['scale_fid']
-        scale_fid *= temp**.5
+        low, high = conf.get("low", -jnp.inf), conf.get("high", jnp.inf)
+        loc_fid, scale_fid = conf["loc_fid"], conf["scale_fid"]
+        scale_fid *= temp**0.5
 
         # Reparametrize
         if not inv:
             if low != -jnp.inf or high != jnp.inf:
+
                 def push(x, loc=loc_fid, scale=scale_fid, lo=low, hi=high):
                     return std2trunc(x, loc, scale, lo, hi)
             else:
+
                 def push(x, scale=scale_fid, loc=loc_fid):
                     return x * scale + loc
         else:
             if low != -jnp.inf or high != jnp.inf:
+
                 def push(x, loc=loc_fid, scale=scale_fid, lo=low, hi=high):
                     return trunc2std(x, loc, scale, lo, hi)
             else:
+
                 def push(x, loc=loc_fid, scale=scale_fid):
                     return (x - loc) / scale
 
@@ -116,45 +133,40 @@ def samp2base(params:dict, config, inv=False, temp=1.) -> dict:
     return out
 
 
-def samp2base_mesh(init:dict, precond=False, transfer=None, inv=False, temp=1.) -> dict:
+def samp2base_mesh(init: dict, precond=False, transfer=None, inv=False, temp=1.0) -> dict:
     """
     Transform sample mesh into base mesh, i.e. initial wavevector coefficients at a=1.
     """
     assert len(init) <= 1, "init dict should only have one or zero key"
     for in_name, mesh in init.items():
-        out_name = in_name+'_' if inv else in_name[:-1]
-        transfer *= temp**.5
+        out_name = in_name + "_" if inv else in_name[:-1]
+        transfer *= temp**0.5
 
         # Reparametrize
         if not inv:
-            if precond=='direct':
+            if precond == "direct":
                 # Sample in direct space
                 mesh = jnp.fft.rfftn(mesh)
 
-            elif precond in ['fourier','kaiser','kaiser_dyn']:
+            elif precond in ["fourier", "kaiser", "kaiser_dyn"]:
                 # Sample in fourier space
                 mesh = rg2cgh(mesh)
 
-            mesh *= transfer # ~ CN(0, P)
+            mesh *= transfer  # ~ CN(0, P)
         else:
             mesh = safe_div(mesh, transfer)
 
-            if precond=='direct':
+            if precond == "direct":
                 mesh = jnp.fft.irfftn(mesh)
 
-            elif precond in ['fourier','kaiser','kaiser_dyn']:
+            elif precond in ["fourier", "kaiser", "kaiser_dyn"]:
                 mesh = cgh2rg(mesh)
 
-        return {out_name:mesh}
+        return {out_name: mesh}
     return {}
 
 
-
-
-
-
-def lagrangian_weights(cosmo:Cosmology, a, pos, box_shape,
-                       b1, b2, bs2, bn2, init_mesh):
+def lagrangian_weights(cosmo: Cosmology, a, pos, box_shape, b1, b2, bs2, bn2, init_mesh):
     """
     Return Lagrangian bias expansion weights as in [Modi+2020](http://arxiv.org/abs/1910.07097).
     .. math::
@@ -176,11 +188,13 @@ def lagrangian_weights(cosmo:Cosmology, a, pos, box_shape,
 
     mesh_shape = delta.shape
     kvec = rfftk(mesh_shape)
-    kk_box = sum((ki  * (m / box_len))**2
-            for ki, m, box_len in zip(kvec, mesh_shape, box_shape, strict=False)) # minus laplace kernel in h/Mpc physical units
+    kk_box = sum(
+        (ki * (m / box_len)) ** 2
+        for ki, m, box_len in zip(kvec, mesh_shape, box_shape, strict=False)
+    )  # minus laplace kernel in h/Mpc physical units
 
     # Init weights
-    weights = 1.
+    weights = 1.0
 
     # Apply b1, punctual term
     delta_part = cic_read(delta, pos)
@@ -196,16 +210,16 @@ def lagrangian_weights(cosmo:Cosmology, a, pos, box_shape,
     shear2 = 0
     for i, ki in enumerate(kvec):
         # Add diagonal terms
-        shear2 = shear2 + jnp.fft.irfftn( - ki**2 * pot_k - delta_k / 3)**2
-        for kj in kvec[i+1:]:
+        shear2 = shear2 + jnp.fft.irfftn(-(ki**2) * pot_k - delta_k / 3) ** 2
+        for kj in kvec[i + 1 :]:
             # Add strict-up-triangle terms (counted twice)
-            shear2 = shear2 + 2 * jnp.fft.irfftn( - ki * kj * pot_k)**2
+            shear2 = shear2 + 2 * jnp.fft.irfftn(-ki * kj * pot_k) ** 2
 
     shear2_part = cic_read(shear2, pos)
     weights = weights + bs2 * (shear2_part - shear2_part.mean())
 
     # Apply bnabla2, non-punctual term
-    delta_nl = jnp.fft.irfftn( - kk_box * delta_k)
+    delta_nl = jnp.fft.irfftn(-kk_box * delta_k)
 
     delta_nl_part = cic_read(delta_nl, pos)
     weights = weights + bn2 * delta_nl_part
@@ -213,9 +227,7 @@ def lagrangian_weights(cosmo:Cosmology, a, pos, box_shape,
     return weights
 
 
-
-
-def rsd(cosmo:Cosmology, a, vel, los:np.ndarray=None):
+def rsd(cosmo: Cosmology, a, vel, los: np.ndarray = None):
     """
     Redshift-Space Distortion (RSD) displacement from cosmology and growth-time integrator velocity.
     Computed with respect to scale factor(s) and line-of-sight(s).
@@ -234,7 +246,7 @@ def rsd(cosmo:Cosmology, a, vel, los:np.ndarray=None):
         return dpos
 
 
-def kaiser_boost(cosmo:Cosmology, a, bE, mesh_shape, los:np.ndarray=None):
+def kaiser_boost(cosmo: Cosmology, a, bE, mesh_shape, los: np.ndarray = None):
     """
     Return Eulerian Kaiser boost including linear growth, Eulerian linear bias, and RSD.
 
@@ -246,17 +258,17 @@ def kaiser_boost(cosmo:Cosmology, a, bE, mesh_shape, los:np.ndarray=None):
         los = np.asarray(los)
         los /= np.linalg.norm(los)
         kvec = rfftk(mesh_shape)
-        kmesh = sum(kk**2 for kk in kvec)**0.5 # in cell units
+        kmesh = sum(kk**2 for kk in kvec) ** 0.5  # in cell units
         mumesh = sum(ki * losi for ki, losi in zip(kvec, los, strict=False))
         mumesh = safe_div(mumesh, kmesh)
 
         return a2g(cosmo, a) * (bE + a2f(cosmo, a) * mumesh**2)
 
 
-def kaiser_model(cosmo:Cosmology, a, bE, init_mesh, los:np.ndarray=None):
+def kaiser_model(cosmo: Cosmology, a, bE, init_mesh, los: np.ndarray = None):
     """
     Kaiser model, with linear growth, Eulerian linear bias, and RSD.
     """
     mesh_shape = ch2rshape(init_mesh.shape)
     init_mesh *= kaiser_boost(cosmo, a, bE, mesh_shape, los)
-    return 1 + jnp.fft.irfftn(init_mesh) #  1 + delta
+    return 1 + jnp.fft.irfftn(init_mesh)  #  1 + delta

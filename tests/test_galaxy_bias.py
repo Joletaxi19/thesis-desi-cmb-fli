@@ -4,7 +4,6 @@ These tests validate the galaxy bias functions copied from benchmark-field-level
 ensuring they work correctly in the desi_cmb_fli framework.
 """
 
-
 import jax.numpy as jnp
 import jax.random as jr
 import numpy as np
@@ -47,7 +46,7 @@ def test_kaiser_boost_with_rsd():
     mesh_shape = np.array([8, 8, 8])
     a = 0.8
     bE = 1.5
-    los = np.array([0., 0., 1.])  # z-direction
+    los = np.array([0.0, 0.0, 1.0])  # z-direction
 
     boost = kaiser_boost(cosmo, a, bE, mesh_shape, los)
 
@@ -84,7 +83,7 @@ def test_kaiser_model_with_rsd():
     mesh_shape = np.array([8, 8, 8])
     a = 0.8
     bE = 1.5
-    los = np.array([0., 0., 1.])
+    los = np.array([0.0, 0.0, 1.0])
 
     key = jr.PRNGKey(42)
     init_mesh_real = jr.normal(key, shape=mesh_shape)
@@ -116,7 +115,7 @@ def test_rsd_with_los():
     cosmo = planck18()
     a = 0.8
     vel = jnp.ones((100, 3)) * 0.1  # Small velocities
-    los = np.array([0., 0., 1.])
+    los = np.array([0.0, 0.0, 1.0])
 
     dpos = rsd(cosmo, a, vel, los)
 
@@ -133,7 +132,7 @@ def test_lagrangian_weights_shape():
     """Test lagrangian_weights produces correct shape."""
     cosmo = planck18()
     mesh_shape = np.array([8, 8, 8])
-    box_shape = np.array([100., 100., 100.])
+    box_shape = np.array([100.0, 100.0, 100.0])
     a = 0.8
 
     # Bias parameters
@@ -158,7 +157,7 @@ def test_lagrangian_weights_b1_only():
     """Test lagrangian_weights with only linear bias."""
     cosmo = planck18()
     mesh_shape = np.array([4, 4, 4])
-    box_shape = np.array([100., 100., 100.])
+    box_shape = np.array([100.0, 100.0, 100.0])
     a = 0.8
 
     # Only b1 non-zero
@@ -180,7 +179,7 @@ def test_lagrangian_weights_higher_order():
     """Test lagrangian_weights with higher-order bias terms."""
     cosmo = planck18()
     mesh_shape = np.array([4, 4, 4])
-    box_shape = np.array([100., 100., 100.])
+    box_shape = np.array([100.0, 100.0, 100.0])
     a = 0.8
 
     # All bias parameters non-zero
@@ -193,7 +192,7 @@ def test_lagrangian_weights_higher_order():
     pos = jnp.indices(mesh_shape, dtype=float).reshape(3, -1).T
 
     # Compute with only b1
-    weights_b1 = lagrangian_weights(cosmo, a, pos, box_shape, b1, 0., 0., 0., init_mesh)
+    weights_b1 = lagrangian_weights(cosmo, a, pos, box_shape, b1, 0.0, 0.0, 0.0, init_mesh)
 
     cosmo2 = planck18()
     # Compute with all bias terms
@@ -207,7 +206,7 @@ def test_kaiser_posterior_shape():
     """Test kaiser_posterior produces correct output shapes."""
     cosmo = planck18()
     mesh_shape = np.array([8, 8, 8])
-    box_shape = np.array([100., 100., 100.])
+    box_shape = np.array([100.0, 100.0, 100.0])
     a = 0.8
     bE = 1.5
     gxy_count = 0.1  # galaxies per cell
@@ -231,18 +230,20 @@ def test_kaiser_posterior_with_rsd():
     """Test kaiser_posterior with RSD."""
     cosmo = planck18()
     mesh_shape = np.array([8, 8, 8])
-    box_shape = np.array([100., 100., 100.])
+    box_shape = np.array([100.0, 100.0, 100.0])
     a = 0.8
     bE = 1.5
     gxy_count = 0.1
-    los = np.array([0., 0., 1.])
+    los = np.array([0.0, 0.0, 1.0])
 
     key = jr.PRNGKey(42)
     delta_obs_real = jr.normal(key, shape=mesh_shape)
     delta_obs = jnp.fft.rfftn(delta_obs_real)
 
     # Without RSD
-    means_no_rsd, stds_no_rsd = kaiser_posterior(delta_obs, cosmo, bE, a, box_shape, gxy_count, los=None)
+    means_no_rsd, stds_no_rsd = kaiser_posterior(
+        delta_obs, cosmo, bE, a, box_shape, gxy_count, los=None
+    )
 
     # With RSD
     cosmo2 = planck18()

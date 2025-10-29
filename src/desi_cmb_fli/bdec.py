@@ -9,22 +9,29 @@ from jax.typing import ArrayLike
 # Bayesian Decision utils #
 ###########################
 
+
 def safe_div(x, y):
     """
     Safe division, where division by zero is zero.
     """
-    y_nozeros = jnp.where(y==0, 1, y)
-    return jnp.where(y==0, 0, x / y_nozeros)
+    y_nozeros = jnp.where(y == 0, 1, y)
+    return jnp.where(y == 0, 0, x / y_nozeros)
 
-def vsearchsorted(a, v, side='left', sorter=None):
-    return vmap(vmap(partial(jnp.searchsorted, side=side, sorter=sorter), in_axes=(0, None)), in_axes=(None, 0))(a, v)
+
+def vsearchsorted(a, v, side="left", sorter=None):
+    return vmap(
+        vmap(partial(jnp.searchsorted, side=side, sorter=sorter), in_axes=(0, None)),
+        in_axes=(None, 0),
+    )(a, v)
+
 
 def cumulative_trapezoid(
     y: ArrayLike,
     x: None | ArrayLike = None,
     dx: float = 1.0,
     axis: int = -1,
-    initial: ArrayLike | None = None,) -> ArrayLike:
+    initial: ArrayLike | None = None,
+) -> ArrayLike:
     """
     Cumulatively integrate y(x) using the composite trapezoidal rule.
     See scipy.integrate.cumulative_trapezoid and quadax implementations.
@@ -94,7 +101,7 @@ def _broadcast_weights(w, shape, axis=None):
     if w is None:
         w = jnp.ones(shape)
     elif jnp.ndim(w) <= 1 and axis is not None:
-        w = jnp.expand_dims(w, range(jnp.ndim(w), len(shape)-axis))
+        w = jnp.expand_dims(w, range(jnp.ndim(w), len(shape) - axis))
         w = jnp.broadcast_to(w, shape)
     else:
         w = jnp.broadcast_to(w, shape)
@@ -132,34 +139,55 @@ def quantile(x, p, axis=0, weights=None, ord=1):
     if ord == 1:
         cdf = jnp.cumsum(w_sort, 0)
         cdf = safe_div(cdf, cdf[-1])
-        i_high = jnp.clip(vsearchsorted(cdf.T, p, side='left'), 1, n-1)
+        i_high = jnp.clip(vsearchsorted(cdf.T, p, side="left"), 1, n - 1)
 
         # Linear interpolation:
         # Solve p = cdf_low + (q_p - q_low) * (cdf_high - cdf_low) / (q_high - q_low)
-        cdf_low, cdf_high = jnp.take_along_axis(cdf, i_high-1, 0), jnp.take_along_axis(cdf, i_high, 0)
-        q_low, q_high = jnp.take_along_axis(x_sort, i_high-1, 0), jnp.take_along_axis(x_sort, i_high, 0)
-        q_p = q_low + (p[:,None] - cdf_low) * safe_div(q_high - q_low, cdf_high - cdf_low)
+        cdf_low, cdf_high = (
+            jnp.take_along_axis(cdf, i_high - 1, 0),
+            jnp.take_along_axis(cdf, i_high, 0),
+        )
+        q_low, q_high = (
+            jnp.take_along_axis(x_sort, i_high - 1, 0),
+            jnp.take_along_axis(x_sort, i_high, 0),
+        )
+        q_p = q_low + (p[:, None] - cdf_low) * safe_div(q_high - q_low, cdf_high - cdf_low)
 
     elif ord == 2:
         cdf = cumulative_trapezoid(w_sort, x_sort, axis=0, initial=0)
-        w_sort = safe_div(w_sort, cdf[-1]) # the integral is no longer sum of weights so they must be renormalized
+        w_sort = safe_div(
+            w_sort, cdf[-1]
+        )  # the integral is no longer sum of weights so they must be renormalized
         cdf = safe_div(cdf, cdf[-1])
-        i_high = jnp.clip(vsearchsorted(cdf.T, p, side='left'), 1, n-1)
+        i_high = jnp.clip(vsearchsorted(cdf.T, p, side="left"), 1, n - 1)
 
         # Quadratic interpolation:
         # Solve alpha / 2 * (q_p - q_low)**2 + w_low * (q_p - q_low) + cdf_low = p
-        cdf_low = jnp.take_along_axis(cdf, i_high-1, 0)
-        q_low, q_high = jnp.take_along_axis(x_sort, i_high-1, 0), jnp.take_along_axis(x_sort, i_high, 0)
-        w_low, w_high = jnp.take_along_axis(w_sort, i_high-1, 0), jnp.take_along_axis(w_sort, i_high, 0)
+        cdf_low = jnp.take_along_axis(cdf, i_high - 1, 0)
+        q_low, q_high = (
+            jnp.take_along_axis(x_sort, i_high - 1, 0),
+            jnp.take_along_axis(x_sort, i_high, 0),
+        )
+        w_low, w_high = (
+            jnp.take_along_axis(w_sort, i_high - 1, 0),
+            jnp.take_along_axis(w_sort, i_high, 0),
+        )
 
-        alphas = safe_div(w_high - w_low, q_high - q_low) # XXX: careful, can still be inf if denom very small
-        delta_p = p[:,None] - cdf_low
-        discr = jnp.maximum(w_low**2 + 2 * alphas * delta_p, 0) # to handle numerical errors and boundaries
-        q_p = q_low + jnp.where(alphas == 0, safe_div(delta_p, w_low), safe_div(-w_low + discr**.5, alphas))
+        alphas = safe_div(
+            w_high - w_low, q_high - q_low
+        )  # XXX: careful, can still be inf if denom very small
+        delta_p = p[:, None] - cdf_low
+        discr = jnp.maximum(
+            w_low**2 + 2 * alphas * delta_p, 0
+        )  # to handle numerical errors and boundaries
+        q_p = q_low + jnp.where(
+            alphas == 0, safe_div(delta_p, w_low), safe_div(-w_low + discr**0.5, alphas)
+        )
     else:
         raise NotImplementedError("Only order 1 and 2 implemented.")
-    q_p = jnp.clip(q_p, q_low, q_high) # to not extrapolate
+    q_p = jnp.clip(q_p, q_low, q_high)  # to not extrapolate
     return q_p.reshape(*p_shape, *out_shape)
+
 
 def argmedian(a, axis=-1):
     """
@@ -186,11 +214,10 @@ def argmedian(a, axis=-1):
     return np.argpartition(a, k, axis).take(k, axis)
 
 
-
 ####################
 # Credible Regions #
 ####################
-def credint(x, p=.95, axis=0, weights=None, type='small', ord=1):
+def credint(x, p=0.95, axis=0, weights=None, type="small", ord=1):
     """
     Compute the p-Credible Interval (CI),
     i.e. the interval of proba `p` which is
@@ -200,7 +227,7 @@ def credint(x, p=.95, axis=0, weights=None, type='small', ord=1):
     * the Median if `type=='med'` (MCI)
     * the Highest if `type=='high'` (HCI)
     """
-    if type == 'small':
+    if type == "small":
         if weights is None:
             return sci_noweights(x, p, axis)
         else:
@@ -209,9 +236,7 @@ def credint(x, p=.95, axis=0, weights=None, type='small', ord=1):
         return qbci(x, p, axis, weights, type, ord)
 
 
-
-
-def qbci(x, p=.95, axis=0, weights=None, type='med', ord=1):
+def qbci(x, p=0.95, axis=0, weights=None, type="med", ord=1):
     """
     Compute the p-Quantile-Based Credible Interval (QBCI),
     i.e. the interval of proba `p` which is
@@ -221,11 +246,11 @@ def qbci(x, p=.95, axis=0, weights=None, type='med', ord=1):
     * the Highest if `type=='high'` (HCI)
     """
     p = jnp.asarray(p)
-    if type == 'low':
+    if type == "low":
         p_low = jnp.zeros_like(p)
-    elif type == 'med':
+    elif type == "med":
         p_low = (1 - p) / 2
-    elif type == 'high':
+    elif type == "high":
         p_low = 1 - p
 
     p_high = p_low + p
@@ -236,7 +261,7 @@ def qbci(x, p=.95, axis=0, weights=None, type='med', ord=1):
     return jnp.stack([q_low, q_high], -1)
 
 
-def qbcr(x, p=.95, weights=None, type='med', norm='inf'):
+def qbcr(x, p=0.95, weights=None, type="med", norm="inf"):
     """
     Compute the p-Quantile-Based Credible Region (QBCR),
     i.e. the `norm`-norm spherical region of proba `p`, where its center on dimension `i` is
@@ -251,21 +276,21 @@ def qbcr(x, p=.95, weights=None, type='med', norm='inf'):
     """
     x = jnp.atleast_2d(x)
     type = np.broadcast_to(type, x.shape[-1])
-    quants = quantile(x, [0., 1/2, 1.], -2, weights)
+    quants = quantile(x, [0.0, 1 / 2, 1.0], -2, weights)
     conds = [
-        type == 'low',
-        type == 'med',
-        type == 'high',
-        ]
+        type == "low",
+        type == "med",
+        type == "high",
+    ]
     center = jnp.select(conds, quants)
 
-    dists = jnp.linalg.norm(x - center[...,None,:], ord=norm, axis=-1)
+    dists = jnp.linalg.norm(x - center[..., None, :], ord=norm, axis=-1)
     # radius = jnp.quantile(dists, p, -1)
     radius = quantile(dists, p, -1, weights)
     return center, radius
 
 
-def sci_noweights(x, p:float=.95, axis=0):
+def sci_noweights(x, p: float = 0.95, axis=0):
     """
     Compute the p-Smallest Credible Interval (SCI) / p-Highest Density Interval (HDI),
     i.e. the smallest interval of proba `p`.
@@ -276,11 +301,11 @@ def sci_noweights(x, p:float=.95, axis=0):
     x_sort = jnp.sort(x, axis=0)
     n = x.shape[0]
     # Round for better estimation at low number of sample, and also handle case proba near 1.
-    i_length = min(int(jnp.rint(p * n)), n-1) # NOTE: this makes function non-vmapable/jitable
+    i_length = min(int(jnp.rint(p * n)), n - 1)  # NOTE: this makes function non-vmapable/jitable
 
-    intervals_low = x_sort[: (n - i_length)] # no need to consider all low bounds
+    intervals_low = x_sort[: (n - i_length)]  # no need to consider all low bounds
     intervals_high = x_sort[i_length:]  # no need to consider all high bounds
-    intervals_length = intervals_high - intervals_low # all intervals with given proba
+    intervals_length = intervals_high - intervals_low  # all intervals with given proba
 
     i_low = intervals_length.argmin(axis=0)
     i_high = i_low + i_length
@@ -289,7 +314,7 @@ def sci_noweights(x, p:float=.95, axis=0):
     return jnp.stack([q_low, q_high], axis=-1)
 
 
-def sci(x, p=.95, axis=0, weights=None, ord=1):
+def sci(x, p=0.95, axis=0, weights=None, ord=1):
     """
     Compute the p-Smallest Credible Interval (SCI) / p-Highest Density Interval (HDI),
     i.e. the smallest interval of proba `p`.
@@ -302,7 +327,7 @@ def sci(x, p=.95, axis=0, weights=None, ord=1):
     x = jnp.atleast_1d(x)
     w = _broadcast_weights(weights, x.shape, axis)
     x, w = jnp.moveaxis(x, axis, 0), jnp.moveaxis(w, axis, 0)
-    n, *out_shape  = x.shape
+    n, *out_shape = x.shape
     x, w = x.reshape(n, -1), w.reshape(n, -1)
 
     # Compute CDF
@@ -314,34 +339,37 @@ def sci(x, p=.95, axis=0, weights=None, ord=1):
         cdf = jnp.cumsum(w_sort, 0)
     elif ord == 2:
         cdf = cumulative_trapezoid(w_sort, x_sort, axis=0, initial=0)
-        w_sort = safe_div(w_sort, cdf[-1]) # the integral is no longer sum of weights so they must be renormalized
+        w_sort = safe_div(
+            w_sort, cdf[-1]
+        )  # the integral is no longer sum of weights so they must be renormalized
     else:
         raise NotImplementedError("Only order 1 and 2 implemented.")
     cdf = safe_div(cdf, cdf[-1])
 
     # Find all the possible low quantiles
     # Shapes n,m ; p,1,1 ; n,m ; m -> p,n,m
-    q_lows = jnp.where(cdf <= (1-p)[:,None,None], x_sort, x_sort[0])
+    q_lows = jnp.where(cdf <= (1 - p)[:, None, None], x_sort, x_sort[0])
 
     # Get corresponding high quantiles
     if x.shape[1] > 1:
         # Shapes n,m ; p,n,m ; n,m -> p,n,m
-        q_highs = vmap(lambda x, p, w: quantile(x, p, 0, w, ord),
-                       in_axes=(-1,-1,-1), out_axes=-1)(x_sort, cdf + p[:,None,None], w_sort)
-    else: # no need to vmap
+        q_highs = vmap(
+            lambda x, p, w: quantile(x, p, 0, w, ord), in_axes=(-1, -1, -1), out_axes=-1
+        )(x_sort, cdf + p[:, None, None], w_sort)
+    else:  # no need to vmap
         # Shapes n ; p,n ; n -> p,n
-        q_highs = quantile(x_sort[:,0], cdf[:,0] + p[:,None], 0, w_sort[:,0], ord)
-        q_lows = q_lows[:,:,0]
+        q_highs = quantile(x_sort[:, 0], cdf[:, 0] + p[:, None], 0, w_sort[:, 0], ord)
+        q_lows = q_lows[:, :, 0]
 
     # Minimize interval
     lengths = q_highs - q_lows
     i_small = lengths.argmin(axis=1)
-    q_low = jnp.take_along_axis(q_lows, i_small[:,None], 1)
-    q_high = jnp.take_along_axis(q_highs, i_small[:,None], 1)
+    q_low = jnp.take_along_axis(q_lows, i_small[:, None], 1)
+    q_high = jnp.take_along_axis(q_highs, i_small[:, None], 1)
     return jnp.stack([q_low, q_high], axis=-1).reshape(*p_shape, *out_shape, 2)
 
 
-def scr(x, p=.95):
+def scr(x, p=0.95):
     """
     Compute the p-Smallest Credible Region (SCR) / p-Highest Density Region (HDR),
     i.e. the smallest region of proba `p`.
@@ -354,5 +382,4 @@ def scr(x, p=.95):
     # cum_mesh = mesh_sort[::-1].cumsum(0)
     # i_high = jnp.clip(vsearchsorted(cum_mesh.T, p, side='left'), 1, n-1)
 
-
-    pass # TODO, and vectorize over p
+    pass  # TODO, and vectorize over p

@@ -1,4 +1,3 @@
-
 import os
 from collections import UserDict
 from dataclasses import dataclass, fields
@@ -26,21 +25,26 @@ class Samples(UserDict):
     s['abc', 'c', 'd'], s['*~abc'], s['*','~c']
     s[['abc','c'],['d']], s[['*~abc']], s[['*','~c']]
     """
+
     # see also https://github.com/cosmodesi/cosmoprimo/blob/33011906d323f56c32c77ba034a6679b02f16876/cosmoprimo/emulators/tools/samples.py#L43
     data: dict
-    groups: dict = None # dict of list of key
+    groups: dict = None  # dict of list of key
 
-    NoneOrEmpty = object() # a sentinel to return empty dict if key is not found
+    NoneOrEmpty = object()  # a sentinel to return empty dict if key is not found
+
     def __post_init__(self):
         if isinstance(self.data, Samples):
             otherdict = self.data.asdict()
-            self.data = self.data.data # avoid nested Samples
+            self.data = self.data.data  # avoid nested Samples
         else:
             otherdict = {}
-        selfdict = {field.name: (getattr(self, field.name) or {}).copy() for field in fields(self)} # handle None and shallow copy
+        selfdict = {
+            field.name: (getattr(self, field.name) or {}).copy() for field in fields(self)
+        }  # handle None and shallow copy
         for k in selfdict:
-            self.__setattr__(k, otherdict.get(k, {}) | selfdict[k]) # inherit attributes if not updated
-
+            self.__setattr__(
+                k, otherdict.get(k, {}) | selfdict[k]
+            )  # inherit attributes if not updated
 
     def __getitem__(self, key, default_fn=None):
         # Global indexing and slicing
@@ -56,12 +60,12 @@ class Samples(UserDict):
                 else:
                     return tuple(self._get(k, default_fn) for k in key)
 
-            elif isinstance(key, list): # construct new instance
+            elif isinstance(key, list):  # construct new instance
                 if default_fn is self.NoneOrEmpty:
                     data = {k: self.data[k] for k in self._parse_key(key) if k in self.data}
                 else:
                     data = {k: self._get(k, default_fn) for k in self._parse_key(key)}
-                return type(self)(**self.asdict() | {'data': data})
+                return type(self)(**self.asdict() | {"data": data})
 
             elif isinstance(key, tuple):
                 key = self._parse_key(key)
@@ -70,30 +74,46 @@ class Samples(UserDict):
                 else:
                     return tuple(self.__getitem__(k, default_fn) for k in key)
 
-
     def _parse_key(self, key):
         newkey = []
         for k in key:
             if isinstance(k, list):
-                newkey += [k] # handle list
+                newkey += [k]  # handle list
             elif isinstance(k, str):
-                if k.startswith('*~'): # all except
+                if k.startswith("*~"):  # all except
                     k = k[2:]
-                    g = [k] if k in self else self.data.keys() if k=='*' else self.groups.get(k, [k])
+                    g = (
+                        [k]
+                        if k in self
+                        else self.data.keys()
+                        if k == "*"
+                        else self.groups.get(k, [k])
+                    )
                     # NOTE: parse self first for compatibility with dict, update, etc.
                     newkey += list(self.data.keys() - set(g))
-                elif k.startswith('~'): # except
+                elif k.startswith("~"):  # except
                     k = k[1:]
-                    g = [k] if k in self else self.data.keys() if k=='*' else self.groups.get(k, [k])
+                    g = (
+                        [k]
+                        if k in self
+                        else self.data.keys()
+                        if k == "*"
+                        else self.groups.get(k, [k])
+                    )
                     for kk in g:
                         newkey.remove(kk) if kk in newkey else None
                 else:
-                    g = [k] if k in self else self.data.keys() if k=='*' else self.groups.get(k, [k])
+                    g = (
+                        [k]
+                        if k in self
+                        else self.data.keys()
+                        if k == "*"
+                        else self.groups.get(k, [k])
+                    )
                     newkey += list(g)
             else:
                 raise KeyError(k)
         return newkey
-
 
     def _istreeof(self, obj, type):
         return tree.all(tree.map(lambda x: isinstance(x, type), obj))
@@ -117,7 +137,6 @@ class Samples(UserDict):
         and empty dict when asked for subdict. To get subdict with None value, use `default_fn=lambda k:None`.
         """
         return self.__getitem__(key, default_fn)
-
 
     def asdict(self):
         # NOTE: dataclasses.asdict makes deepcopy, cf. https://github.com/python/cpython/issues/88071
@@ -153,7 +172,6 @@ class Samples(UserDict):
     def tree_unflatten(cls, aux, data):
         return cls(*data, *aux)
 
-
     def __or__(self, other):
         newdict = self.asdict()
         if isinstance(other, Samples):
@@ -164,9 +182,9 @@ class Samples(UserDict):
                 else:
                     return NotImplemented
         elif isinstance(other, UserDict):
-            newdict |= {'data': self.data | other.data}
+            newdict |= {"data": self.data | other.data}
         elif isinstance(other, dict):
-            newdict |= {'data': self.data | other}
+            newdict |= {"data": self.data | other}
         else:
             return NotImplemented
         return type(self)(**newdict)
@@ -181,9 +199,9 @@ class Samples(UserDict):
                 else:
                     return NotImplemented
         elif isinstance(other, UserDict):
-            newdict |= {'data': other.data | self.data}
+            newdict |= {"data": other.data | self.data}
         elif isinstance(other, dict):
-            newdict |= {'data': other | self.data}
+            newdict |= {"data": other | self.data}
         else:
             return NotImplemented
         return type(self)(**newdict)
@@ -194,11 +212,10 @@ class Samples(UserDict):
             otherdict = other.asdict()
             selfdict = self.asdict()
             for k in selfdict:
-                self.__setattr__(k, selfdict[k] | otherdict.get(k, {}) )
+                self.__setattr__(k, selfdict[k] | otherdict.get(k, {}))
             return self
         else:
             return super().__ior__(other)
-
 
     ##############
     # Transforms #
@@ -206,7 +223,7 @@ class Samples(UserDict):
     def concat(self, *others, axis=0):
         return tree.map(lambda x, *y: jnp.concatenate((x, *y), axis=axis), self, *others)
 
-    def stackby(self, names:str|list=None, remove=True, axis=-1):
+    def stackby(self, names: str | list = None, remove=True, axis=-1):
         """
         Stack variables by groups, optionally removing individual variables.
 
@@ -219,7 +236,7 @@ class Samples(UserDict):
 
         new = self.copy()
         for k in names:
-            if k not in self: # if name is a variable do noting
+            if k not in self:  # if name is a variable do noting
                 if len(self.groups[k]) == 1:
                     new.data[k] = self[k]
                 else:
@@ -232,14 +249,6 @@ class Samples(UserDict):
         return new
 
 
-
-
-
-
-
-
-
-
 @tree_util.register_pytree_node_class
 @dataclass
 class Chains(Samples):
@@ -249,9 +258,17 @@ class Chains(Samples):
     def tree_flatten(self):
         return (self.data,), (self.groups, self.labels)
 
-
     @classmethod
-    def load_runs(cls, path:str, start:int, end:int, transforms=None, groups=None, labels=None, batch_ndim=2):
+    def load_runs(
+        cls,
+        path: str,
+        start: int,
+        end: int,
+        transforms=None,
+        groups=None,
+        labels=None,
+        batch_ndim=2,
+    ):
         """
         Load and append runs (or extra fields) saved in different files with same name except index.
 
@@ -264,14 +281,14 @@ class Chains(Samples):
                 if i_run == start:
                     raise FileNotFoundError(f"File {path}_{i_run}.npz does not exist")
                 else:
-                    print(f"File {path}_{i_run}.npz does not exist, stopping at run {i_run-1}")
+                    print(f"File {path}_{i_run}.npz does not exist, stopping at run {i_run - 1}")
                     end = i_run - 1
                     break
 
         if transforms is None:
             transforms = []
         transforms = np.atleast_1d(transforms)
-        conc_axis = max(batch_ndim-1, 0)
+        conc_axis = max(batch_ndim - 1, 0)
 
         @jit
         def transform(samples):
@@ -281,7 +298,9 @@ class Chains(Samples):
 
         for i_run in range(start, end + 1):
             # Load
-            part = dict(jnp.load(path+f"_{i_run}.npz")) # better than pickle for dict of array-like
+            part = dict(
+                jnp.load(path + f"_{i_run}.npz")
+            )  # better than pickle for dict of array-like
             part = cls(part, groups=groups, labels=labels)
             part = transform(part)
 
@@ -305,7 +324,9 @@ class Chains(Samples):
         Apply transform on n splits along given axis.
         Stack n values along first axis.
         """
-        assert n <= jnp.shape(self[next(iter(self))])[axis], "n should be less (<=) than the length of given axis."
+        assert n <= jnp.shape(self[next(iter(self))])[axis], (
+            "n should be less (<=) than the length of given axis."
+        )
         out = tree.map(lambda x: jnp.array_split(x, n, axis), self)
         out = transform(out)
 
@@ -319,10 +340,10 @@ class Chains(Samples):
         Stack n values along first axis.
         """
         length = jnp.shape(self[next(iter(self))])[axis]
-        ends = jnp.rint(jnp.arange(1,n+1) / n * length).astype(int)
+        ends = jnp.rint(jnp.arange(1, n + 1) / n * length).astype(int)
         out = tree.map(lambda x: [], self)
         for end_val in ends:
-            part = tree.map(lambda x, e=end_val: x[axis*(slice(None),) + (slice(None,e),)], self)
+            part = tree.map(lambda x, e=end_val: x[axis * (slice(None),) + (slice(None, e),)], self)
             part = transform(part)
             for k in self:
                 out[k].append(part[k])
@@ -331,7 +352,7 @@ class Chains(Samples):
             out[k] = jnp.stack(out[k])
         return out
 
-    def choice(self, n, names:str|list=None, rng=42, batch_ndim=2, replace=False):
+    def choice(self, n, names: str | list = None, rng=42, batch_ndim=2, replace=False):
         """
         Select a random subsample of size n along given axis for variables selected by names.
         names can be variable names or group names.
@@ -343,15 +364,17 @@ class Chains(Samples):
 
         if isinstance(rng, int):
             rng = jr.key(rng)
+
         def fn(x):
             return jr.choice(rng, x.reshape(-1), shape=(n,), replace=replace)
+
         fn = nvmap(fn, batch_ndim)
 
         for k in names:
             self |= tree.map(fn, self.get([k]))
         return self
 
-    def thin(self, thinning=None, moment=None, axis:int=1):
+    def thin(self, thinning=None, moment=None, axis: int = 1):
         # All item shapes should match on given axis so take the first item shape
         length = jnp.shape(next(iter(self.values())))[axis]
         if thinning is None:
@@ -360,11 +383,14 @@ class Chains(Samples):
             n_split = max(np.rint(length / thinning), 1)
 
         if moment is None:
+
             def fn(c):
                 return Chains.last(c, axis=axis)
         else:
+
             def fn(c):
                 return Chains.moment(c, m=moment, axis=axis)
+
         out = self.splitrans(fn, n_split, axis=axis)
         return tree.map(lambda x: jnp.moveaxis(x, 0, axis), out)
 
@@ -404,14 +430,13 @@ class Chains(Samples):
         # Update groups
         groups = {}
         for g, gl in self.groups.items():
-            groups[g] = [] # make a new list to not overwrite shallow copied groups
+            groups[g] = []  # make a new list to not overwrite shallow copied groups
             for k in gl:
                 if k in substitute:
                     groups[g] += substitute[k]
                 else:
                     groups[g].append(k)
         return Chains(data, groups=groups, labels=labels)
-
 
     #####################
     # Metric Transforms #
@@ -422,26 +447,29 @@ class Chains(Samples):
         `self` and `others` should have matching keys, except possibly 'n_evals'.
         """
         name = "n_evals"
-        infos, rest = self.get(([name], ['*~'+name]))
+        infos, rest = self.get(([name], ["*~" + name]))
         infos = tree.map(lambda x: jnp.sum(x, axis), infos)
 
         others_new = ()
         for other in others:
-            others_new += (other[['*~'+name]],)
+            others_new += (other[["*~" + name]],)
 
         return infos | tree.map(fn, rest, *others_new)
 
     def last(self, axis=1):
         return self.metric(lambda x: jnp.take(x, -1, axis), axis=axis)
 
-    def moment(self, m:int|list=(0,1,2), axis=1):
+    def moment(self, m: int | list = (0, 1, 2), axis=1):
         if isinstance(m, int):
+
             def fn(x):
                 return jnp.sum(x**m, axis)
         else:
             m = jnp.asarray(m)
+
             def fn(x):
-                return jnp.sum(x[...,None]**m, axis)
+                return jnp.sum(x[..., None] ** m, axis)
+
         return self.metric(fn, axis=axis)
 
     def center_moment(self, axis=-1):
@@ -449,7 +477,7 @@ class Chains(Samples):
             moments = jnp.moveaxis(moments, axis, 0)
             count = moments[0]
             mean = moments[1] / count
-            std = (moments[2] / count - mean**2)**.5
+            std = (moments[2] / count - mean**2) ** 0.5
             return jnp.stack((mean, std), axis)
 
         return self.metric(lambda x: center(x, axis), axis=())
@@ -457,6 +485,7 @@ class Chains(Samples):
     def cmoment(self, axis=1):
         def fn(x):
             return jnp.stack((x.mean(axis), x.std(axis)), -1)
+
         return self.metric(fn, axis=axis)
 
     # def mse(self, truth, axis=0):
@@ -464,14 +493,14 @@ class Chains(Samples):
 
     def mse_cmoment(self, true_cmom, axis=None):
         cmom = self.cmoment(axis=1)
-        true_cmom = Chains(true_cmom, self.groups, self.labels) # cast into Chains
+        true_cmom = Chains(true_cmom, self.groups, self.labels)  # cast into Chains
 
         def mse_mom(est, true, axis):
             n_chains = est.shape[0]
             est = jnp.moveaxis(est, -1, 0)
             true = jnp.moveaxis(true, -1, 0)
-            sqrerr_mean = ((est[0] - true[0]) / true[1])**2 / n_chains
-            sqrerr_std = 2 * ((est[1] - true[1]) / true[1])**2 / n_chains
+            sqrerr_mean = ((est[0] - true[0]) / true[1]) ** 2 / n_chains
+            sqrerr_std = 2 * ((est[1] - true[1]) / true[1]) ** 2 / n_chains
             # NOTE: such square errors are asymptotically N(0, 1 / n_eff)^2 = chi^2(1) / n_eff
             return jnp.stack((sqrerr_mean.mean(axis), sqrerr_std.mean(axis)))
             # NOTE: asymptotically chi^2(n_c * n_d) / (n_c * n_d * n_eff)
@@ -481,7 +510,7 @@ class Chains(Samples):
     def eval_times_mse(self, truth, axis=None):
         mse_mom = self.mse_cmoment(truth, axis=axis)
         name = "n_evals"
-        infos, rest = mse_mom[[name], ['*~'+name]]
+        infos, rest = mse_mom[[name], ["*~" + name]]
         return infos | tree.map(lambda x: infos[name] * x, rest)
 
     def multi_ess(self, axis=None):
@@ -490,9 +519,8 @@ class Chains(Samples):
     def eval_per_ess(self, axis=None):
         ess = self.multi_ess(axis=axis)
         name = "n_evals"
-        infos, rest = ess[[name], ['*~'+name]]
+        infos, rest = ess[[name], ["*~" + name]]
         return infos | tree.map(lambda x: infos[name] / x, rest)
-
 
     ############
     # Plotting #
@@ -509,8 +537,7 @@ class Chains(Samples):
     def print_summary(self, group_by_chain=True):
         print_summary(self.data, group_by_chain=group_by_chain)
 
-
-    def plot(self, names:str|list=None, batch_ndim=2, grid=True, log=False):
+    def plot(self, names: str | list = None, batch_ndim=2, grid=True, log=False):
         """
         Plot chains. names can be variable names or group names.
         """
@@ -520,12 +547,14 @@ class Chains(Samples):
             names = list(np.atleast_1d(names))
 
         # Concatenate extra dims or expand missing dims
-        n_conc = max(batch_ndim-2, 0)
-        n_exp = max(2-batch_ndim, 0)
+        n_conc = max(batch_ndim - 2, 0)
+        n_exp = max(2 - batch_ndim, 0)
+
         def conc_exp_fn(v):
             for _ in range(n_conc):
                 v = jnp.concatenate(v)
             return jnp.expand_dims(v, axis=range(n_exp))
+
         conc = tree.map(conc_exp_fn, self[names])
 
         # All item shapes should match on the first batch_ndim dimensions,
@@ -536,22 +565,21 @@ class Chains(Samples):
         subfigs = fig.subfigures(len(names), 1)
         subfigs = np.atleast_1d(subfigs)
         for subfig, name in zip(subfigs, names, strict=False):
-
             subfig.suptitle(f"{name}")
-            axs = subfig.subplots(1, n_chains, sharey='row')
+            axs = subfig.subplots(1, n_chains, sharey="row")
             axs = np.atleast_1d(axs)
             subfig.subplots_adjust(wspace=0)
 
             for i_n, (k, v) in enumerate(conc[[name]].items()):
                 for i_c, ax in enumerate(axs):
                     label = conc.labels.get(k)
-                    ax.plot(v[i_c], label=k if label is None else '$'+label+'$')
+                    ax.plot(v[i_c], label=k if label is None else "$" + label + "$")
                     if log:
-                        ax.set_yscale('log')
+                        ax.set_yscale("log")
                     ax.grid(grid)
 
                     xlab = ax.get_xticklabels()
-                    if xlab and i_n==0:
+                    if xlab and i_n == 0:
                         plt.setp(xlab[:2], visible=False)
 
                 ax.legend()
