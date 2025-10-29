@@ -45,11 +45,17 @@ Git hooks automatically format code on commit. CI runs tests on push.
   - Growth factor computations
   - Demo notebook
 
+- **Galaxy Bias** (`src/desi_cmb_fli/galaxy_bias.py`): Transforming matter to galaxy fields
+  - Kaiser model (linear bias + RSD in Fourier space)
+  - Lagrangian bias expansion (LBE) for non-linear effects
+  - Redshift-space distortions (RSD)
+  - Observational noise modeling
+  - Demo notebook
+
 **🚧 Next Steps:**
-- Galaxy bias modeling
-- Redshift-space distortions
 - DESI/Planck/ACT data interfaces
 - Field-level likelihood implementation
+- MCMC sampling infrastructure
 
 ### Repository Structure
 - `src/desi_cmb_fli/`: Simulation and inference modules

@@ -48,10 +48,29 @@ jupyter notebook 02_gravitational_evolution_demo.ipynb
 
 ---
 
-## Coming Soon
+### 03_galaxy_bias_demo.ipynb
+**Status:** ✅ Complete
+**Purpose:** Transform matter fields into galaxy fields using bias models
 
-### 03_galaxy_bias.ipynb (Planned)
-Populate matter fields with galaxies using bias expansion models.
+**Contents:**
+- Kaiser model (linear bias + RSD in Fourier space)
+- Lagrangian bias expansion (LBE) with higher-order terms
+- Redshift-space distortions (RSD) from peculiar velocities
+- Observational noise modeling (shot noise)
+- Power spectrum comparison and validation
+- Visual comparison: matter vs galaxy fields
+
+**Usage:**
+```bash
+# Same as previous notebooks
+source /global/common/software/desi/users/adematti/perlmutter/cosmodesiconda/20250331-1.0.0/conda/etc/profile.d/conda.sh
+conda activate ${SCRATCH}/envs/desi-cmb-fli
+jupyter notebook 03_galaxy_bias_demo.ipynb
+```
+
+---
+
+## Coming Soon
 
 ### 04_likelihood_demo.ipynb (Planned)
 Field-level likelihood evaluation and gradient computation.

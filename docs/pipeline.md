@@ -36,20 +36,42 @@ Evolve initial density fields forward in time using Lagrangian Perturbation Theo
 
 ---
 
-## 3. Galaxy Bias Modeling (Next)
+## 3. Galaxy Bias Modeling ✅ (October 2025)
 
-Populate the evolved matter field with galaxies according to bias models.
-Include survey ingestion for DESI tracer selections and Planck/ACT lensing maps, masks, and noise properties.
+Transform evolved matter density fields into galaxy density fields using bias models and redshift-space distortions. Add observational noise to create realistic mock data.
+
+**Module:** `desi_cmb_fli.galaxy_bias`
+**Implementation:**
+- Kaiser model: Linear bias + RSD in Fourier space
+- Lagrangian bias expansion (LBE): Non-linear bias effects following [Modi+2020](http://arxiv.org/abs/1910.07097)
+  - Linear bias (b₁)
+  - Quadratic bias (b₂)
+  - Tidal shear bias (b_s²)
+  - Non-local bias (b_∇²)
+- Redshift-space distortions from peculiar velocities
+- Observational noise (shot noise) modeling
+- Posterior sampling with Kaiser approximation
+
+**Tests:** `tests/test_galaxy_bias.py`
+**Notebook:** `notebooks/03_galaxy_bias_demo.ipynb`
+
+**Next step:** DESI/Planck/ACT data interfaces and likelihood implementation
 
 ---
 
-## 4. Lensing Observables (Planned)
+## 4. Survey Data Ingestion (Planned)
+
+Ingest DESI tracer selections and Planck/ACT lensing maps with masks and noise properties.
+
+---
+
+## 5. Lensing Observables (Planned)
 
 Compute convergence fields from the matter distribution and compare to CMB lensing reconstructions.
 
 ---
 
-## 5. Likelihood & Inference (Planned)
+## 6. Likelihood & Inference (Planned)
 
 Develop Fourier-space field-level likelihood and complementary 3×2pt analyses for validation.
 Sampling performed with NumPyro (NUTS/HMC).
@@ -57,14 +79,14 @@ Design matrix structures, FFT conventions, and marginalization strategies will b
 
 ---
 
-## 6. Validation (Planned)
+## 7. Validation (Planned)
 
 Perform null tests, generate mocks, and run consistency checks spanning instrument systematics to cosmological parameters.
 Include cross-comparisons with compressed statistics (e.g., 3×2pt power spectra).
 
 ---
 
-## 7. Reporting (Planned)
+## 8. Reporting (Planned)
 
 Produce reproducible figures, tables, and documentation to support thesis deliverables and publications.
 

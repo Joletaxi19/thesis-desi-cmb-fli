@@ -3,9 +3,6 @@
 This module provides tools to evolve initial density fields forward in time
 using Lagrangian Perturbation Theory (LPT) and N-body particle-mesh methods.
 The implementation uses JAX for GPU acceleration and jaxpm for gravitational forces.
-
-This code is directly copied from benchmark-field-level/flbench/nbody.py and bricks.py
-to maintain exact compatibility with the reference implementation.
 """
 
 import jax_cosmo as jc

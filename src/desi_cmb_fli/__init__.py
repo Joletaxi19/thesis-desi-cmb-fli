@@ -8,6 +8,6 @@ except PackageNotFoundError:
 	__version__ = "0.1.0"
 
 # Import main modules for convenience
-from . import evolution, initial_conditions
+from . import evolution, galaxy_bias, initial_conditions
 
-__all__ = ["__version__", "initial_conditions", "evolution"]
+__all__ = ["__version__", "initial_conditions", "evolution", "galaxy_bias"]
