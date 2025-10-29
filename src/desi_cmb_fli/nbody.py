@@ -1,38 +1,14 @@
-"""Gravitational evolution for cosmological simulations.
-
-This module provides tools to evolve initial density fields forward in time
-using Lagrangian Perturbation Theory (LPT) and N-body particle-mesh methods.
-The implementation uses JAX for GPU acceleration and jaxpm for gravitational forces.
-"""
-
 import jax_cosmo as jc
 import numpy as np
-from diffrax import Euler, ODETerm, SaveAt, diffeqsolve
-from jax import lax, tree
+from diffrax import Euler, ODETerm, PIDController, SaveAt, Tsit5, diffeqsolve
+from jax import debug, lax, tree
 from jax import numpy as jnp
 from jax_cosmo import Cosmology
 from jaxpm.growth import _growth_factor_ODE
 from jaxpm.kernels import longrange_kernel
 from jaxpm.painting import cic_paint, cic_read
 
-
-def safe_div(x, y):
-    """
-    Safe division, where division by zero is zero.
-    Uses the "double-where" trick for safe gradient,
-    see https://github.com/jax-ml/jax/issues/5039
-    """
-    y_nozeros = jnp.where(y==0, 1, y)
-    return jnp.where(y==0, 0, x / y_nozeros)
-
-
-def ch2rshape(kshape):
-    """
-    Complex Hermitian shape to real shape.
-
-    Assume last real shape is even to lift the ambiguity.
-    """
-    return (*kshape[:2], 2*(kshape[2]-1))
+from desi_cmb_fli.utils import ch2rshape, safe_div
 
 
 def rfftk(shape):
@@ -175,6 +151,33 @@ def pm_forces2(delta_k, pos, mesh_shape, lap_fd=False, grad_fd=False):
     return force2
 
 
+def lpt(cosmo:Cosmology, init_mesh, pos, a, order=2, grad_fd=False, lap_fd=False):
+    """
+    Compute first and second order LPT displacement,
+    e.g. Eq 3.5 and 3.7 [List and Hahn](https://arxiv.org/abs/2409.19049)
+    or Eq. 2 and 3 [Jenkins2010](https://arxiv.org/pdf/0910.0258)
+    """
+    # if jnp.isrealobj(init_mesh):
+    #     delta_k = jnp.fft.rfftn(init_mesh)
+    #     mesh_shape = init_mesh.shape
+    # else:
+    delta_k = init_mesh
+    mesh_shape = ch2rshape(init_mesh.shape)
+
+    force1 = pm_forces(pos, mesh_shape, mesh=delta_k, grad_fd=grad_fd, lap_fd=lap_fd)
+    dpos = a2g(cosmo, a) * force1
+    vel = force1
+
+    if order == 2:
+        force2 = pm_forces2(delta_k, pos, mesh_shape, grad_fd=grad_fd, lap_fd=lap_fd)
+        dpos -= a2gg(cosmo, a) * force2
+        vel  -= a2dggdg(cosmo, a) * force2
+
+    return dpos, vel
+
+
+
+
 ###########
 # Growths #
 ###########
@@ -242,30 +245,6 @@ def g2dggdg(cosmo, g):
     gg, f, ff = g2gg(cosmo, g), g2f(cosmo, g), g2ff(cosmo, g)
     return safe_div(gg * ff, g * f) # NOTE: dggdg(0) = 0
 
-
-def lpt(cosmo:Cosmology, init_mesh, pos, a, order=2, grad_fd=False, lap_fd=False):
-    """
-    Compute first and second order LPT displacement,
-    e.g. Eq 3.5 and 3.7 [List and Hahn](https://arxiv.org/abs/2409.19049)
-    or Eq. 2 and 3 [Jenkins2010](https://arxiv.org/pdf/0910.0258)
-    """
-    # if jnp.isrealobj(init_mesh):
-    #     delta_k = jnp.fft.rfftn(init_mesh)
-    #     mesh_shape = init_mesh.shape
-    # else:
-    delta_k = init_mesh
-    mesh_shape = ch2rshape(init_mesh.shape)
-
-    force1 = pm_forces(pos, mesh_shape, mesh=delta_k, grad_fd=grad_fd, lap_fd=lap_fd)
-    dpos = a2g(cosmo, a) * force1
-    vel = force1
-
-    if order == 2:
-        force2 = pm_forces2(delta_k, pos, mesh_shape, grad_fd=grad_fd, lap_fd=lap_fd)
-        dpos -= a2gg(cosmo, a) * force2
-        vel  -= a2dggdg(cosmo, a) * force2
-
-    return dpos, vel
 
 
 ###########
@@ -385,3 +364,118 @@ def nbody_bf_scan(cosmo:Cosmology, init_mesh, pos, a, n_steps=5,
 
     state, _ = lax.scan(step, state, gs)
     return tree.map(lambda x: x[None], state)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+def lpt_fpm(cosmo:Cosmology, init_mesh, pos, a, order=1, grad_fd=True, lap_fd=False):
+    """
+    Computes first and second order LPT displacement, e.g. Eq. 2 and 3 [Jenkins2010](https://arxiv.org/pdf/0910.0258)
+    """
+    a = jnp.atleast_1d(a)
+    E = jc.background.Esqr(cosmo, a)**.5
+    if jnp.isrealobj(init_mesh):
+        delta_k = jnp.fft.rfftn(init_mesh)
+        mesh_shape = init_mesh.shape
+    else:
+        delta_k = init_mesh
+        mesh_shape = ch2rshape(init_mesh.shape)
+
+    init_force = pm_forces(pos, mesh_shape, mesh=delta_k, grad_fd=grad_fd, lap_fd=lap_fd)
+    dq = a2g(cosmo, a) * init_force
+    p = a**2 * a2f(cosmo, a) * E * dq
+
+    if order == 2:
+        kvec = rfftk(mesh_shape)
+        pot_k = delta_k * invlaplace_kernel(kvec, lap_fd)
+
+        delta2 = 0
+        shear_acc = 0
+        for i in range(3):
+            # Add products of diagonal terms = 0 + s11*s00 + s22*(s11+s00)...
+            shear_ii = gradient_kernel(kvec, i, grad_fd)**2
+            shear_ii = jnp.fft.irfftn(shear_ii * pot_k)
+            delta2 += shear_ii * shear_acc
+            shear_acc += shear_ii
+
+            for j in range(i+1, 3):
+                # Substract squared strict-up-triangle terms
+                hess_ij = gradient_kernel(kvec, i, grad_fd) * gradient_kernel(kvec, j, grad_fd)
+                delta2 -= jnp.fft.irfftn(hess_ij * pot_k)**2
+
+        init_force2 = pm_forces(pos, mesh_shape, mesh=jnp.fft.rfftn(delta2), grad_fd=grad_fd, lap_fd=lap_fd)
+        dq2 = a2gg(cosmo, a) * init_force2 # D2 is renormalized: - D2 = 3/7 * growth_factor_second
+        p2 = (a**2 * a2ff(cosmo, a) * E) * dq2
+
+        dq -= dq2
+        p  -= p2
+
+    return dq, p
+
+
+def diffrax_vf(cosmo:Cosmology, mesh_shape, grad_fd=True, lap_fd=False):
+    """
+    N-body ODE vector field for diffrax, e.g. Tsit5 or Dopri5
+
+    vector field signature is (a, state, args) -> dstate, where state is a tuple (position, velocities)
+    """
+    def vector_field(a, state, args):
+        pos, vel = state
+        forces = pm_forces(pos, mesh_shape, grad_fd=grad_fd, lap_fd=lap_fd) * 1.5 * cosmo.Omega_m
+
+        # Computes the update of position (drift)
+        dpos = 1. / (a**3 * jnp.sqrt(jc.background.Esqr(cosmo, a))) * vel
+        # Computes the update of velocity (kick)
+        dvel = 1. / (a**2 * jnp.sqrt(jc.background.Esqr(cosmo, a))) * forces
+        return dpos, dvel
+    return vector_field
+
+
+def jax_ode_vf(cosmo:Cosmology, mesh_shape, grad_fd=True, lap_fd=False):
+    """
+    Return N-body ODE vector field for jax.experimental.ode.odeint
+
+    vector field signature is (state, a, *args) -> dstate, where state is a tuple (position, velocities)
+    """
+    vf = diffrax_vf(cosmo, mesh_shape, grad_fd, lap_fd)
+    def vector_field(state, a, *args):
+        return vf(a, state, args)
+    return vector_field
+
+
+
+def nbody_tsit5(cosmo:Cosmology, mesh_shape, particles, a_lpt, a_obs, tol=1e-2,
+           grad_fd=True, lap_fd=False, snapshots:int|list=None):
+    if a_lpt == a_obs:
+        return tree.map(lambda x: x[None], particles)
+    else:
+        terms = ODETerm(diffrax_vf(cosmo, mesh_shape, grad_fd, lap_fd))
+        solver = Tsit5() # Tsit5 usually better than Dopri5
+        controller = PIDController(rtol=tol, atol=tol, pcoeff=0.4, icoeff=1, dcoeff=0)
+
+        if snapshots is None or (isinstance(snapshots, int) and snapshots < 2):
+            saveat = SaveAt(t1=True)
+        elif isinstance(snapshots, int):
+            saveat = SaveAt(ts=jnp.linspace(a_lpt, a_obs, snapshots))
+        else:
+            saveat = SaveAt(ts=jnp.asarray(snapshots))
+
+        sol = diffeqsolve(terms, solver, a_lpt, a_obs, dt0=None, y0=particles,
+                                stepsize_controller=controller, max_steps=1000, saveat=saveat)
+        # NOTE: if max_steps > 50 for dopri5/tsit5, just quit :')
+        particles = sol.ys
+        debug.print("tsit5 n_steps: {n}", n=sol.stats['num_steps'])
+        return particles

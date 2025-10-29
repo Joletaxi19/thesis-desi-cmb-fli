@@ -8,6 +8,14 @@ except PackageNotFoundError:
 	__version__ = "0.1.0"
 
 # Import main modules for convenience
-from . import evolution, galaxy_bias, initial_conditions
+from . import bricks, chains, metrics, model, nbody, utils
 
-__all__ = ["__version__", "initial_conditions", "evolution", "galaxy_bias"]
+__all__ = [
+	"__version__",
+	"bricks",
+	"nbody",
+	"model",
+	"utils",
+	"metrics",
+	"chains",
+]

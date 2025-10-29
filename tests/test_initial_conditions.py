@@ -1,15 +1,17 @@
-"""Unit tests for ``desi_cmb_fli.initial_conditions``."""
+"""Unit tests for initial conditions generation."""
 
 import jax.numpy as jnp
 import jax.random as jr
 import jax_cosmo as jc
 import numpy as np
 
-from desi_cmb_fli.initial_conditions import (
-    cgh2rg,
+from desi_cmb_fli.bricks import (
     lin_power_interp,
     lin_power_mesh,
-    rfftk,
+)
+from desi_cmb_fli.nbody import rfftk
+from desi_cmb_fli.utils import (
+    cgh2rg,
     rg2cgh,
 )
 

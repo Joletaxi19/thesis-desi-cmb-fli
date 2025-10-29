@@ -9,17 +9,15 @@ import jax.numpy as jnp
 import jax.random as jr
 import numpy as np
 
-from desi_cmb_fli.evolution import a2g
-from desi_cmb_fli.galaxy_bias import (
+from desi_cmb_fli.bricks import (
     Planck18,
     kaiser_boost,
     kaiser_model,
     kaiser_posterior,
     lagrangian_weights,
-    lin_power_mesh,
     rsd,
 )
-from desi_cmb_fli.initial_conditions import lin_power_mesh as init_lin_power_mesh
+from desi_cmb_fli.nbody import a2g
 
 
 def planck18():
@@ -203,24 +201,6 @@ def test_lagrangian_weights_higher_order():
 
     # Results should differ when higher-order terms are included
     assert not jnp.allclose(weights_b1, weights_all)
-
-
-def test_lin_power_mesh_consistency():
-    """Test that lin_power_mesh in galaxy_bias matches initial_conditions."""
-    cosmo = planck18()
-    mesh_shape = np.array([8, 8, 8])
-    box_shape = np.array([100., 100., 100.])
-    a = 1.0
-
-    # From galaxy_bias module
-    pmesh_gb = lin_power_mesh(cosmo, mesh_shape, box_shape, a=a)
-
-    # From initial_conditions module
-    cosmo2 = planck18()
-    pmesh_ic = init_lin_power_mesh(cosmo2, mesh_shape, box_shape, a=a)
-
-    # Should be identical
-    assert jnp.allclose(pmesh_gb, pmesh_ic)
 
 
 def test_kaiser_posterior_shape():

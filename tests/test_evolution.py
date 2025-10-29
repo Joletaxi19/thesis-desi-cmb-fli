@@ -1,21 +1,23 @@
-"""Unit tests for ``desi_cmb_fli.evolution``."""
+"""Unit tests for gravitational evolution."""
 
 import jax.numpy as jnp
 import jax.random as jr
 import jax_cosmo as jc
 import numpy as np
 
-from desi_cmb_fli.evolution import (
+from desi_cmb_fli.bricks import lin_power_mesh
+from desi_cmb_fli.nbody import (
     a2f,
     a2g,
-    ch2rshape,
     invlaplace_kernel,
     lpt,
     pm_forces,
     rfftk,
+)
+from desi_cmb_fli.utils import (
+    ch2rshape,
     safe_div,
 )
-from desi_cmb_fli.initial_conditions import lin_power_mesh
 
 
 def planck18():

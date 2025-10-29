@@ -38,9 +38,12 @@ dependencies = [
   "fitsio>=1.2",
   "jax>=0.4.20",
   "jaxlib>=0.4.20",
+  "jax-cosmo>=0.1.0",
   "numpyro>=0.13",
   "jaxpm==0.0.2",
   "diffrax>=0.4.0",
+  "blackjax>=1.0",
+  "getdist>=1.4",
 ]
 
 [project.optional-dependencies]
