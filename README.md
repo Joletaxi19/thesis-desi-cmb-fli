@@ -39,9 +39,15 @@ Git hooks automatically format code on commit. CI runs tests on push.
   - Validation tools for P(k) recovery
   - Demo notebook
 
+- **Gravitational Evolution** (`src/desi_cmb_fli/evolution.py`): Time evolution of density fields
+  - Lagrangian Perturbation Theory (1LPT, 2LPT)
+  - N-body particle-mesh solver with BullFrog integrator
+  - Growth factor computations
+  - Demo notebook
+
 **🚧 Next Steps:**
-- Gravitational evolution using jaxpm (particle-mesh solver)
 - Galaxy bias modeling
+- Redshift-space distortions
 - DESI/Planck/ACT data interfaces
 - Field-level likelihood implementation
 

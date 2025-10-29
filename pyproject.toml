@@ -40,6 +40,7 @@ dependencies = [
   "jaxlib>=0.4.20",
   "numpyro>=0.13",
   "jaxpm==0.0.2",
+  "diffrax>=0.4.0",
 ]
 
 [project.optional-dependencies]

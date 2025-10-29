@@ -12,8 +12,6 @@ import jax_cosmo as jc
 import numpy as np
 from jax import numpy as jnp
 from jax_cosmo import Cosmology
-from jaxpm.kernels import longrange_kernel
-from jaxpm.painting import cic_paint, cic_read
 from scipy.special import legendre
 
 
@@ -376,30 +374,6 @@ def gradient_kernel(kvec, direction:int, fd=False):
     if fd:
         ki = (8. * np.sin(ki) - np.sin(2. * ki)) / 6.
     return 1j * ki
-
-def pm_forces(pos, mesh_shape, mesh=None, grad_fd=False, lap_fd=False, r_split=0):
-    """
-    Compute gravitational forces on particles using a PM scheme
-    """
-    if mesh is None:
-        delta_k = jnp.fft.rfftn(cic_paint(jnp.zeros(mesh_shape), pos))
-    # elif jnp.isrealobj(mesh):
-    #     delta_k = jnp.fft.rfftn(mesh)
-    else:
-        delta_k = mesh
-
-    # Compute gravitational potential
-    kvec = rfftk(mesh_shape)
-    pot_k = delta_k * invlaplace_kernel(kvec, lap_fd) * longrange_kernel(kvec, r_split=r_split)
-
-    # # If painted field, double deconvolution to account for both painting and reading
-    # if mesh is None:
-    #     print("deconv")
-    #     pot_k /= paint_kernel(kvec, order=2)**2
-
-    # Compute gravitational forces
-    return jnp.stack([cic_read(jnp.fft.irfftn(- gradient_kernel(kvec, i, grad_fd) * pot_k), pos)
-                      for i in range(3)], axis=-1)
 
 
 def spectrum(mesh, mesh2=None, box_shape=None, kedges:int|float|list=None,

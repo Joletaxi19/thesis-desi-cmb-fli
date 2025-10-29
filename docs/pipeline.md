@@ -18,19 +18,28 @@ Generate 3D Gaussian random fields representing primordial density fluctuations 
 
 ---
 
-## 2. Gravitational Evolution (Next)
+## 2. Gravitational Evolution ✅ (October 2025)
 
-Implement particle–mesh (PM) evolution with `jaxpm` to evolve the initial matter field.
-Include survey ingestion for DESI tracer selections and Planck/ACT lensing maps, masks, and noise properties.
+Evolve initial density fields forward in time using Lagrangian Perturbation Theory (LPT) and N-body particle-mesh methods with the BullFrog integrator.
 
-**Resources:**
-- [jaxpm GitHub](https://github.com/DifferentiableUniverseInitiative/jaxpm)
+**Module:** `desi_cmb_fli.evolution`
+**Implementation:**
+- Growth factor computations via `jaxpm` ODE solver
+- First and second-order LPT displacements
+- Full N-body evolution with BullFrog solver from `diffrax`
+- Particle-mesh force calculations
+
+**Tests:** `tests/test_evolution.py`
+**Notebook:** `notebooks/02_gravitational_evolution_demo.ipynb`
+
+**Next step:** Galaxy bias modeling and redshift-space distortions
 
 ---
 
-## 3. Galaxy Bias Modeling (Planned)
+## 3. Galaxy Bias Modeling (Next)
 
 Populate the evolved matter field with galaxies according to bias models.
+Include survey ingestion for DESI tracer selections and Planck/ACT lensing maps, masks, and noise properties.
 
 ---
 
