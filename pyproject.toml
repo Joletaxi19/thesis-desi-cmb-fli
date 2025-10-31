@@ -54,6 +54,7 @@ dev = [
   "mypy",
   "pre-commit",
   "ipykernel",
+  "jupyterlab",
   "matplotlib",
   "pandas>=2.1",
 ]
