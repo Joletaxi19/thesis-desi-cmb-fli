@@ -28,34 +28,16 @@ pre-commit install
 
 Git hooks automatically format code on commit. CI runs tests on push.
 
-## Building the cosmology analysis
+## Pipeline Status
 
-### Current Status
-
-**✅ Completed:**
-- **Initial Conditions** (`src/desi_cmb_fli/initial_conditions.py`): Gaussian random field generation for cosmological simulations
-  - Linear matter power spectrum computation via jax_cosmo
-  - 3D density field generation
-  - Validation tools for P(k) recovery
-  - Demo notebook
-
-- **Gravitational Evolution** (`src/desi_cmb_fli/evolution.py`): Time evolution of density fields
-  - Lagrangian Perturbation Theory (1LPT, 2LPT)
-  - N-body particle-mesh solver with BullFrog integrator
-  - Growth factor computations
-  - Demo notebook
-
-- **Galaxy Bias** (`src/desi_cmb_fli/galaxy_bias.py`): Transforming matter to galaxy fields
-  - Kaiser model (linear bias + RSD in Fourier space)
-  - Lagrangian bias expansion (LBE) for non-linear effects
-  - Redshift-space distortions (RSD)
-  - Observational noise modeling
-  - Demo notebook
+**✅ Completed:** Initial conditions, gravitational evolution, galaxy bias modeling, and field-level inference on synthetic galaxy data
 
 **🚧 Next Steps:**
-- DESI/Planck/ACT data interfaces
-- Field-level likelihood implementation
-- MCMC sampling infrastructure
+- CMB lensing modeling (convergence κ from matter fields)
+- Field-level inference on synthetic galaxy + CMB lensing data
+- Field-level inference on real data (DESI LRG × Planck/ACT κ-maps)
+
+See [`docs/pipeline.md`](docs/pipeline.md) for detailed implementation roadmap and [`notebooks/`](notebooks/) for interactive demonstrations.
 
 ### Repository Structure
 - `src/desi_cmb_fli/`: Simulation and inference modules

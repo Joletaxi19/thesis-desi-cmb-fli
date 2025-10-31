@@ -2,6 +2,24 @@
 
 Interactive demonstrations and tutorials for the DESI × CMB lensing field-level inference pipeline.
 
+## Running Notebooks
+
+**On NERSC Perlmutter**:
+
+### Batch Job (sbatch)
+
+For long-running, GPU-intensive tasks (like MCMC inference), it is highly recommended to run them as non-interactive batch jobs.
+
+Notebooks intended for this (e.g., `04-fli-inference.ipynb`) have been converted into Python scripts and are located in the `scripts/` directory. These script versions are optimized for batch execution and **adapted for parallelism** (e.g., running MCMC chains in parallel across multiple GPUs).
+
+To run a job, submit the sbatch template script, which is pre-configured to execute one of these Python scripts:
+
+```bash
+sbatch configs/nersc/slurm/template_perlmutter.sbatch
+```
+
+**Note**: Create `logs/` and `output/` directories before submitting to store logs and outputs.
+
 ## Available Notebooks
 
 ### 01_initial_conditions_demo.ipynb
@@ -14,17 +32,6 @@ Interactive demonstrations and tutorials for the DESI × CMB lensing field-level
 - Visualization: 2D slices and density histograms
 - Validation: P(k) recovery from generated fields
 
-**Usage:**
-```bash
-# On NERSC Perlmutter (login node, CPU-only)
-source /global/common/software/desi/users/adematti/perlmutter/cosmodesiconda/20250331-1.0.0/conda/etc/profile.d/conda.sh
-conda activate ${SCRATCH}/envs/desi-cmb-fli
-jupyter notebook 01_initial_conditions_demo.ipynb
-
-# For GPU access (interactive job)
-salloc --nodes 1 --qos interactive --time 00:10:00 --constraint gpu --gpus 1 --account=desi
-jupyter notebook 01_initial_conditions_demo.ipynb
-```
 ---
 
 ### 02_gravitational_evolution_demo.ipynb
@@ -37,14 +44,6 @@ jupyter notebook 01_initial_conditions_demo.ipynb
 - N-body evolution with BullFrog solver
 - Visualization: evolved density fields and distributions
 - Method comparison: 1LPT vs 2LPT vs N-body
-
-**Usage:**
-```bash
-# Same as 01_initial_conditions_demo.ipynb
-source /global/common/software/desi/users/adematti/perlmutter/cosmodesiconda/20250331-1.0.0/conda/etc/profile.d/conda.sh
-conda activate ${SCRATCH}/envs/desi-cmb-fli
-jupyter notebook 02_gravitational_evolution_demo.ipynb
-```
 
 ---
 
@@ -60,20 +59,26 @@ jupyter notebook 02_gravitational_evolution_demo.ipynb
 - Power spectrum comparison and validation
 - Visual comparison: matter vs galaxy fields
 
-**Usage:**
-```bash
-# Same as previous notebooks
-source /global/common/software/desi/users/adematti/perlmutter/cosmodesiconda/20250331-1.0.0/conda/etc/profile.d/conda.sh
-conda activate ${SCRATCH}/envs/desi-cmb-fli
-jupyter notebook 03_galaxy_bias_demo.ipynb
-```
+---
+
+### 04_field_level_inference.ipynb
+**Status:** ✅ Complete
+**Purpose:** Full Bayesian inference pipeline on synthetic data
+
+**Contents:**
+- `FieldLevelModel` creation and configuration
+- Synthetic observation generation from truth parameters
+- MCMC inference with NumPyro NUTS sampler
+- Parameter recovery validation
+- Visualizations: trace plots, posterior distributions, corner plots
 
 ---
 
-## Coming Soon
+## Next Notebooks (Planned)
 
-### 04_likelihood_demo.ipynb (Planned)
-Field-level likelihood evaluation and gradient computation.
+Future notebooks will cover:
+- CMB lensing modeling
+- Joint inference on synthetic galaxy + CMB lensing data
+- Real data inference with DESI LRG × Planck/ACT κ-maps
 
-### 05_inference_nuts.ipynb (Planned)
-Parameter inference using NumPyro NUTS sampler.
+Details will be added as implementation progresses.

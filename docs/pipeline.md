@@ -1,7 +1,15 @@
 # DESI × CMB Lensing Field-Level Inference
 ## Pipeline Blueprint & Implementation Roadmap
 
-The scientific objective is to extract cosmological information using field-level inference on DESI galaxy clustering jointly with CMB lensing convergence maps from Planck and ACT. The pipeline proceeds through the following stages:
+The scientific objective is to extract cosmological information using field-level inference on DESI galaxy clustering jointly with CMB lensing convergence maps from Planck and ACT.
+
+## Overview
+
+![Field-Level Inference Architecture](figures/fli_architecture.png)
+
+*Figure: Complete field-level inference pipeline. The forward model (top) generates predictions from initial conditions δ_ini through N-body evolution (JAX-PM) to final density δ_final, which produces both galaxy overdensity δ_g and κ-map through ray-tracing. The NumPyro NUTS sampler compares these predictions with observed data (DESI LRG + Planck/ACT κ-map) to update the posterior distribution of cosmological parameters and the initial density field.*
+
+The pipeline proceeds through the following stages:
 
 ---
 
@@ -40,7 +48,7 @@ Evolve initial density fields forward in time using Lagrangian Perturbation Theo
 
 Transform evolved matter density fields into galaxy density fields using bias models and redshift-space distortions. Add observational noise to create realistic mock data.
 
-**Module:** `desi_cmb_fli.galaxy_bias`
+**Modules:** `desi_cmb_fli.bricks`, `desi_cmb_fli.nbody`
 **Implementation:**
 - Kaiser model: Linear bias + RSD in Fourier space
 - Lagrangian bias expansion (LBE): Non-linear bias effects following [Modi+2020](http://arxiv.org/abs/1910.07097)
@@ -52,43 +60,48 @@ Transform evolved matter density fields into galaxy density fields using bias mo
 - Observational noise (shot noise) modeling
 - Posterior sampling with Kaiser approximation
 
-**Tests:** `tests/test_galaxy_bias.py`
+**Tests:** `tests/test_model.py`
 **Notebook:** `notebooks/03_galaxy_bias_demo.ipynb`
 
-**Next step:** DESI/Planck/ACT data interfaces and likelihood implementation
+**Next step:** Field-level inference pipeline
 
 ---
 
-## 4. Survey Data Ingestion (Planned)
+## 4. Field-Level Inference ✅ (October 2025)
 
-Ingest DESI tracer selections and Planck/ACT lensing maps with masks and noise properties.
+Full Bayesian inference pipeline using NumPyro for parameter estimation from synthetic and real data.
+
+**Module:** `desi_cmb_fli.model` (FieldLevelModel)
+**Implementation:**
+- Probabilistic model with NumPyro:
+  - Prior distributions for cosmology (Ωm, σ8) based on Planck18
+  - Prior distributions for bias parameters (b₁, b₂, b_s², b_∇²)
+  - Prior on initial conditions (Gaussian random field)
+- Forward model pipeline: IC → evolution (LPT/Kaiser) → bias → observable
+- Data conditioning and model blocking
+- Kaiser posterior initialization for efficient MCMC warmup
+- NUTS sampler for parameter inference
+
+**Supporting modules:**
+- `desi_cmb_fli.metrics` - Analysis metrics and power spectra
+- `desi_cmb_fli.chains` - Chain utilities and diagnostics
+- `desi_cmb_fli.plot` - Visualization tools
+- `desi_cmb_fli.samplers` - MCMC samplers (NUTS, MCLMC)
+
+**Tests:** `tests/test_model.py` (11 tests covering model creation, prediction, conditioning, initialization)
+**Notebook:** `notebooks/04_field_level_inference.ipynb` - Complete demonstration with synthetic data
 
 ---
 
-## 5. Lensing Observables (Planned)
+## Next Steps
 
-Compute convergence fields from the matter distribution and compare to CMB lensing reconstructions.
+The following stages are planned but not yet implemented:
 
----
+1. **CMB lensing modeling** - Computation of convergence κ from matter fields
+2. **Field-level inference on synthetic galaxy + CMB lensing data** - Joint inference extending the current galaxy-only framework
+3. **Field-level inference on real data** - Application to DESI LRG × Planck/ACT κ-maps
 
-## 6. Likelihood & Inference (Planned)
-
-Develop Fourier-space field-level likelihood and complementary 3×2pt analyses for validation.
-Sampling performed with NumPyro (NUTS/HMC).
-Design matrix structures, FFT conventions, and marginalization strategies will be specified.
-
----
-
-## 7. Validation (Planned)
-
-Perform null tests, generate mocks, and run consistency checks spanning instrument systematics to cosmological parameters.
-Include cross-comparisons with compressed statistics (e.g., 3×2pt power spectra).
-
----
-
-## 8. Reporting (Planned)
-
-Produce reproducible figures, tables, and documentation to support thesis deliverables and publications.
+Implementation details will be documented as development progresses.
 
 ---
 
