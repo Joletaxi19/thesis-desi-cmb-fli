@@ -32,6 +32,3 @@ reports/
 # DVC/ML
 .dvc/
 *.lock
-
-# Jupyter Notebooks
-notebooks/FLI_introduction.ipynb
