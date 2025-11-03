@@ -14,6 +14,8 @@
 # In[2]:
 
 
+import os
+
 import jax
 import jax.numpy as jnp
 import jax.random as jr
@@ -120,7 +122,10 @@ for ax, data, title in zip(axes, slices, titles, strict=True):
     plt.colorbar(im, ax=ax, label="Galaxy count")
 
 plt.tight_layout()
-plt.show()
+
+os.makedirs("figures/04", exist_ok=True)
+plt.savefig("figures/04/obs_field_slices.png")
+plt.close()
 
 
 # ## 3. Run MCMC Inference
@@ -152,8 +157,8 @@ for k, v in init_params.items():
 
 
 # MCMC configuration
-num_warmup = 100 # 100 for test, 2000 for real runs
-num_samples = 100 # 100 for test, 2000 for real runs
+num_warmup = 100  # 100 for test, 2000 for real runs
+num_samples = 100  # 100 for test, 2000 for real runs
 num_chains = 4
 target_accept_prob = 0.65
 
@@ -256,7 +261,8 @@ for i, param in enumerate(param_names):
         ax.grid(True, alpha=0.3)
 
 plt.tight_layout()
-plt.show()
+plt.savefig("figures/04/trace_plots.png")
+plt.close()
 
 
 # In[17]:
@@ -287,7 +293,8 @@ for i, param in enumerate(param_names):
         ax.grid(True, alpha=0.3)
 
 plt.tight_layout()
-plt.show()
+plt.savefig("figures/04/posterior_distributions.png")
+plt.close()
 
 
 # ## 6. Corner Plot
@@ -313,7 +320,8 @@ try:
         show_titles=True,
         title_kwargs={"fontsize": 12},
     )
-    plt.show()
+    plt.savefig("figures/04/corner_plot.png")
+    plt.close()
 
 except ImportError:
     print("Corner plot requires the 'corner' package. Install with: pip install corner")
