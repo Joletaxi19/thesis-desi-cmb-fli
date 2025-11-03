@@ -469,10 +469,10 @@ class FieldLevelModel(Model):
             mean_counts = mesh * self.gxy_count
             mean_counts = jnp.maximum(mean_counts, 1e-6)
             obs_counts = sample("obs", dist.Poisson(mean_counts).to_event(mesh.ndim))
-            return obs_counts # MODIFICATION FROM THE HUGO BENCHMARK ORIGINAL PAPER
+            return obs_counts  # MODIFICATION FROM THE HUGO BENCHMARK ORIGINAL PAPER
             # Gaussian noise
-            #obs_mesh = sample("obs", dist.Normal(mesh, (temp / self.gxy_count) ** 0.5))
-            #return obs_mesh  # NOTE: mesh is 1+delta_obs
+            # obs_mesh = sample("obs", dist.Normal(mesh, (temp / self.gxy_count) ** 0.5))
+            # return obs_mesh  # NOTE: mesh is 1+delta_obs
 
     def reparam(self, params: dict, fourier=True, inv=False, temp=1.0):
         """
@@ -678,7 +678,9 @@ class FieldLevelModel(Model):
         chains.data["kptc"] = fn(chains.data[name])
         return chains
 
-    def kaiser_post(self, rng, obs_data, base=False, temp=1.0): # MODIFICATION FROM THE HUGO BENCHMARK ORIGINAL PAPER
+    def kaiser_post(
+        self, rng, obs_data, base=False, temp=1.0
+    ):  # MODIFICATION FROM THE HUGO BENCHMARK ORIGINAL PAPER
         delta_obs_field = obs_data / self.gxy_count - 1.0
 
         if jnp.isrealobj(delta_obs_field):

@@ -224,7 +224,7 @@ def lagrangian_weights(cosmo: Cosmology, a, pos, box_shape, b1, b2, bs2, bn2, in
     delta_nl_part = cic_read(delta_nl, pos)
     weights = weights + bn2 * delta_nl_part
 
-    #return weights
+    # return weights
     return jnp.maximum(weights, 0.0)  # MODIFICATION FROM THE HUGO BENCHMARK ORIGINAL PAPER
 
 
