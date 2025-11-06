@@ -8,6 +8,10 @@ Repository for a thesis project targeting **field-level inference (FLI)** on DES
 - Delivery of joint cosmological constraints from the cross-correlation of those
   observables, with clear validation and documentation.
 
+## Code Attribution
+
+This repository builds upon the [benchmark-field-level](https://github.com/hsimonfroy/benchmark-field-level) framework by Hugo Simonfroy.
+
 ## Quick Start
 
 **Local development** (CPU only):

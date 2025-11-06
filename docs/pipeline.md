@@ -7,7 +7,7 @@ The scientific objective is to extract cosmological information using field-leve
 
 ![Field-Level Inference Architecture](figures/fli_architecture.png)
 
-*Figure: Complete field-level inference pipeline. The forward model (top) generates predictions from initial conditions δ_ini through N-body evolution (JAX-PM) to final density δ_final, which produces both galaxy overdensity δ_g and κ-map through ray-tracing. The NumPyro NUTS sampler compares these predictions with observed data (DESI LRG + Planck/ACT κ-map) to update the posterior distribution of cosmological parameters and the initial density field.*
+*Figure: Complete field-level inference pipeline. The forward model (top) generates predictions from initial conditions δ_ini through N-body evolution (JAX-PM) to final density δ_final, which produces both galaxy overdensity δ_g and κ-map through ray-tracing. The MCLMC sampler compares these predictions with observed data (DESI LRG + Planck/ACT κ-map) to update the posterior distribution of cosmological parameters and the initial density field.*
 
 The pipeline proceeds through the following stages:
 
@@ -69,18 +69,18 @@ Transform evolved matter density fields into galaxy density fields using bias mo
 
 ## 4. Field-Level Inference ✅ (October 2025)
 
-Full Bayesian inference pipeline using NumPyro for parameter estimation from synthetic and real data.
+Full Bayesian inference pipeline for parameter estimation from synthetic and real data.
 
 **Module:** `desi_cmb_fli.model` (FieldLevelModel)
 **Implementation:**
-- Probabilistic model with NumPyro:
+- Probabilistic model:
   - Prior distributions for cosmology (Ωm, σ8) based on Planck18
   - Prior distributions for bias parameters (b₁, b₂, b_s², b_∇²)
   - Prior on initial conditions (Gaussian random field)
 - Forward model pipeline: IC → evolution (LPT/Kaiser) → bias → observable
 - Data conditioning and model blocking
 - Kaiser posterior initialization for efficient MCMC warmup
-- NUTS sampler for parameter inference
+- NUTS or MCLMC sampler for parameter inference
 
 **Supporting modules:**
 - `desi_cmb_fli.metrics` - Analysis metrics and power spectra
@@ -102,16 +102,6 @@ The following stages are planned but not yet implemented:
 3. **Field-level inference on real data** - Application to DESI LRG × Planck/ACT κ-maps
 
 Implementation details will be documented as development progresses.
-
----
-
-## NERSC Infrastructure ✅ (October 2025)
-
-- Environment recipe: `env/environment.yml` with JAX, NumPyro, jaxpm, jax_cosmo
-- Perlmutter SLURM template: `configs/nersc/slurm/template_perlmutter.sbatch`
-- JAX+CUDA 12.4 configuration documented in `docs/hpc.md`
-- Storage defined for DESI inputs and scratch outputs
-- Configuration files under `configs/nersc/` describe queue, storage, and environment setup
 
 ---
 

@@ -22,40 +22,46 @@ pip install --upgrade "jax[cuda12]" -f https://storage.googleapis.com/jax-releas
 pre-commit install
 ```
 
-## Daily Usage
+## Running Jobs
 
-Load environment each session:
+All scripts are configured via YAML files in `configs/<script_name>/config.yaml` which contain:
+- SLURM parameters (time, nodes, GPUs, constraint)
+- Model configuration
+- MCMC settings
+- Random seeds
+
+### Submit a job
+
 ```bash
-source /global/common/software/desi/users/adematti/perlmutter/cosmodesiconda/20250331-1.0.0/conda/etc/profile.d/conda.sh
-conda activate ${SCRATCH}/envs/desi-cmb-fli
+# Example: Field-level inference
+./configs/04_field_level_inference/submit.py
 ```
 
-## GPU Setup
+The submit script reads the YAML configuration and submits the job with appropriate SLURM parameters.
+
+### Check job status
 
 ```bash
-module load cudatoolkit/12.4
-export LD_LIBRARY_PATH=$(echo ${CONDA_PREFIX}/lib/python3.11/site-packages/nvidia/*/lib | tr ' ' ':'):${LD_LIBRARY_PATH}
+squeue -u $USER
 ```
 
-**Test GPU** (requires GPU node):
+### View outputs
+
+- Logs: `logs/<jobname>-<jobid>.out`
+- Figures: `outputs/run_<timestamp>/figures/`
+- Config used: `outputs/run_<timestamp>/config/`
+
+### Test GPU (interactive)
+
 ```bash
 salloc --nodes 1 --qos interactive --time 00:03:00 --constraint gpu --gpus 1 --account=desi
+module load cudatoolkit/12.4
+source /global/common/software/desi/users/adematti/perlmutter/cosmodesiconda/20250331-1.0.0/conda/etc/profile.d/conda.sh
+conda activate ${SCRATCH}/envs/desi-cmb-fli
+export LD_LIBRARY_PATH=$(echo ${CONDA_PREFIX}/lib/python3.11/site-packages/nvidia/*/lib | tr ' ' ':'):${LD_LIBRARY_PATH}
 python -c "import jax; print(jax.devices())"  # Should show [CudaDevice(id=0), ...]
 ```
 
-## Batch Jobs
-
-Template script structure: `configs/nersc/slurm/template_perlmutter.sbatch`
-
-Submit with: `sbatch script.sbatch`
-
 ## Storage
 
-- **Project data**: `/global/cfs/cdirs/desi/users/<username>/desi-cmb-fli`
-- **Scratch (large outputs)**: `/pscratch/sd/<u>/<username>/desi-cmb-fli`
 - **DESI DR1 catalogs**: `/global/cfs/cdirs/desi/public/dr1/survey/catalogs/dr1/LSS/iron/LSScats/v1.5`
-
-## Notes
-
-- **jaxpm version**: Project uses `jaxpm==0.0.2` (stable). Newer versions (0.1.x+) have breaking API changes.
-- **GPU on login nodes**: JAX falls back to CPU on login nodes (expected). GPU only works on compute nodes.

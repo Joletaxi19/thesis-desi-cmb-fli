@@ -4,21 +4,11 @@ Interactive demonstrations and tutorials for the DESI × CMB lensing field-level
 
 ## Running Notebooks
 
-**On NERSC Perlmutter**:
+**Interactive**: Open `.ipynb` files in Jupyter/VS Code for exploration and visualization.
 
-### Batch Job (sbatch)
+**Batch (NERSC Perlmutter)**: For GPU-intensive tasks (MCMC inference), notebooks have been converted to Python scripts in `scripts/` with YAML configuration in `configs/`.
 
-For long-running, GPU-intensive tasks (like MCMC inference), it is highly recommended to run them as non-interactive batch jobs.
-
-Notebooks intended for this (e.g., `04-fli-inference.ipynb`) have been converted into Python scripts and are located in the `scripts/` directory. These script versions are optimized for batch execution and **adapted for parallelism** (e.g., running MCMC chains in parallel across multiple GPUs).
-
-To run a job, submit the sbatch template script, which is pre-configured to execute one of these Python scripts:
-
-```bash
-sbatch configs/nersc/slurm/template_perlmutter.sbatch
-```
-
-**Note**: Create `logs/` and `output/` directories before submitting to store logs and outputs.
+See [`docs/hpc.md`](../docs/hpc.md) for detailed instructions on running batch jobs.
 
 ## Available Notebooks
 
@@ -67,10 +57,12 @@ sbatch configs/nersc/slurm/template_perlmutter.sbatch
 
 **Contents:**
 - `FieldLevelModel` creation and configuration
-- Synthetic observation generation from truth parameters
-- MCMC inference with NumPyro NUTS sampler
+- Synthetic observation generation from truth parameters (Gaussian likelihood)
+- MCMC inference with NUTS sampler
 - Parameter recovery validation
 - Visualizations: trace plots, posterior distributions, corner plots
+
+**Note:** The script version (`scripts/04_field_level_inference.py`) is optimized for batch execution on NERSC Perlmutter with multi-GPU parallelization and uses MCLMC instead of NUTS for efficiency. It works with a configuration YAML file, see [`docs/hpc.md`](../docs/hpc.md) for details. The used configuration file and the plots generated are stored in 'outputs/run_{timestamp}/'. The terminal output can be followed in real-time in the 'logs/' directory.
 
 ---
 

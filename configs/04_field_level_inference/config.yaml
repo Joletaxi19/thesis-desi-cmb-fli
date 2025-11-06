@@ -1,0 +1,47 @@
+# Field-Level Inference Configuration
+
+# SLURM configuration
+slurm:
+  job_name: fli-04
+  account: desi
+  qos: regular
+  constraint: gpu  # or cpu
+  nodes: 1
+  gpus: 4  # number of GPUs (only if constraint=gpu)
+  time: "02:00:00"  # Increased to 2h for longer warmup + sampling
+
+# Model configuration
+model:
+  mesh_shape: [64, 64, 64]
+  box_shape: [320.0, 320.0, 320.0]  # Mpc/h
+  evolution: lpt
+  lpt_order: 1
+  a_obs: 0.5  # Scale factor for observation
+  gxy_density: 0.001  # Galaxy number density [h^3/Mpc^3]
+
+# Truth parameters for synthetic data generation
+truth_params:
+  Omega_m: 0.3
+  sigma8: 0.8
+  b1: 1.0
+  b2: 0.0
+  bs2: 0.0
+  bn2: 0.0
+
+# MCMC configuration
+mcmc:
+  num_warmup: 5000  # Increased for better adaptation
+  num_samples: 2000  # Number of samples to collect
+  num_chains: 4  # Parallelized across GPUs
+
+  # MCLMC specific configuration
+  mclmc:
+    desired_energy_var: 0.0005  # Target variance for energy (typical: 5e-4 to 1e-3)
+    diagonal_preconditioning: false  # Set to true for diagonal mass matrix adaptation
+    thinning: 1  # Keep at 1 (thinning with vmap causes memory issues)
+
+    # Note: After warmup, L is recalculated based on eval_per_ess=1000
+    # (following benchmark-field-level approach for efficiency)
+
+# Random seed
+seed: 42
