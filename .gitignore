@@ -1,37 +1,20 @@
 # Byte-compiled / caches
 __pycache__/
 *.py[cod]
-*.so
-*.dylib
 *.ipynb_checkpoints
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
 
 # OS
 .DS_Store
-*.swp
-.idea/
-.vscode/
 
 # Build and env
-build/
-dist/
 *.egg-info/
-.env
-.venv
-.envrc
 
-# Data artifacts
-data/raw/
-data/interim/
-data/processed/
+# Run outputs
 outputs/
-reports/
-
-# DVC/ML
-.dvc/
-*.lock
+logs/
 
 # Notebooks
 notebooks/FLI_introduction.ipynb
+
+# VSCode settings
+.vscode/
