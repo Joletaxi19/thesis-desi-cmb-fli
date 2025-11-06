@@ -51,8 +51,6 @@ def lin_power_interp(cosmo=Cosmology, a=1.0, n_interp=256):
             jnp.interp(x.reshape(-1), ks, logpows, left=-jnp.inf, right=-jnp.inf)
         ).reshape(x.shape)
 
-    # pows = jc.power.linear_matter_power(cosmo, ks, a=a)
-    # pow_fn = lambda x: jnp.interp(x.reshape(-1), ks, pows, left=0., right=0.).reshape(x.shape)
     return pow_fn
 
 
@@ -64,8 +62,8 @@ def lin_power_mesh(cosmo: Cosmology, mesh_shape, box_shape, a=1.0, n_interp=256)
     kvec = rfftk(mesh_shape)
     kmesh = (
         sum(
-            (ki * (m / box_len)) ** 2
-            for ki, m, box_len in zip(kvec, mesh_shape, box_shape, strict=False)
+            (ki * (m / box_l)) ** 2
+            for ki, m, box_l in zip(kvec, mesh_shape, box_shape, strict=False)
         )
         ** 0.5
     )
@@ -112,24 +110,14 @@ def samp2base(params: dict, config, inv=False, temp=1.0) -> dict:
         # Reparametrize
         if not inv:
             if low != -jnp.inf or high != jnp.inf:
-
-                def push(x, loc=loc_fid, scale=scale_fid, lo=low, hi=high):
-                    return std2trunc(x, loc, scale, lo, hi)
+                out[out_name] = std2trunc(value, loc_fid, scale_fid, low, high)
             else:
-
-                def push(x, scale=scale_fid, loc=loc_fid):
-                    return x * scale + loc
+                out[out_name] = value * scale_fid + loc_fid
         else:
             if low != -jnp.inf or high != jnp.inf:
-
-                def push(x, loc=loc_fid, scale=scale_fid, lo=low, hi=high):
-                    return trunc2std(x, loc, scale, lo, hi)
+                out[out_name] = trunc2std(value, loc_fid, scale_fid, low, high)
             else:
-
-                def push(x, loc=loc_fid, scale=scale_fid):
-                    return (x - loc) / scale
-
-        out[out_name] = push(value)
+                out[out_name] = (value - loc_fid) / scale_fid
     return out
 
 
@@ -189,8 +177,7 @@ def lagrangian_weights(cosmo: Cosmology, a, pos, box_shape, b1, b2, bs2, bn2, in
     mesh_shape = delta.shape
     kvec = rfftk(mesh_shape)
     kk_box = sum(
-        (ki * (m / box_len)) ** 2
-        for ki, m, box_len in zip(kvec, mesh_shape, box_shape, strict=False)
+        (ki * (m / box_l)) ** 2 for ki, m, box_l in zip(kvec, mesh_shape, box_shape, strict=False)
     )  # minus laplace kernel in h/Mpc physical units
 
     # Init weights
@@ -224,8 +211,7 @@ def lagrangian_weights(cosmo: Cosmology, a, pos, box_shape, b1, b2, bs2, bn2, in
     delta_nl_part = cic_read(delta_nl, pos)
     weights = weights + bn2 * delta_nl_part
 
-    # return weights
-    return jnp.maximum(weights, 0.0)  # MODIFICATION FROM THE HUGO BENCHMARK ORIGINAL PAPER
+    return weights
 
 
 def rsd(cosmo: Cosmology, a, vel, los: np.ndarray = None):
