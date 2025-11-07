@@ -25,3 +25,4 @@ dependencies:
     - jaxpm==0.0.2
     - mpi4jax>=0.3.15
     - "jax-cosmo @ git+https://github.com/DifferentiableUniverseInitiative/jax_cosmo@master"
+    - corner>=2.1.0

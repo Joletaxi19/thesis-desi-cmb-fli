@@ -1,19 +1,15 @@
 #!/usr/bin/env python
+"""
+Field-Level Inference on Synthetic Data
 
-# # Field-Level Inference on Synthetic Data
-#
-# This notebook demonstrates the complete field-level inference pipeline:
-# 1. Create a `FieldLevelModel` from configuration
-# 2. Generate synthetic observations from truth parameters
-# 3. Run MCMC inference to recover parameters
-# 4. Analyze chains and compare to truth
-# 5. Visualize results
-#
-# This follows the approach from [benchmark-field-level](https://github.com/hsimonfroy/benchmark-field-level),
-# using the MCLMC sampler (already implemented in benchmark) instead of NUTS.
+This script follows benchmark-field-level (MCLMC section):
+https://github.com/hsimonfroy/benchmark-field-level
 
-# In[2]:
-
+Improvements:
+- YAML configuration
+- Parallelized with jit(vmap) for multi-GPU
+- Automated outputs and visualizations
+"""
 
 import argparse
 import shutil
@@ -29,463 +25,310 @@ import numpy as np
 import numpyro
 import yaml
 from blackjax.adaptation.mclmc_adaptation import MCLMCAdaptationState
-from jax import jit, vmap
+from jax import jit, tree, vmap
 
 from desi_cmb_fli.model import FieldLevelModel, default_config
 from desi_cmb_fli.samplers import get_mclmc_run, get_mclmc_warmup
 
-# Parse command-line arguments
-parser = argparse.ArgumentParser(description="Field-Level Inference")
-parser.add_argument(
-    "--config",
-    default="configs/04_field_level_inference/config.yaml",
-    help="Path to configuration YAML file",
-)
+jax.config.update("jax_enable_x64", True)
+
+# Parse args
+parser = argparse.ArgumentParser()
+parser.add_argument("--config", default="configs/04_field_level_inference/config.yaml")
 args = parser.parse_args()
 
-# Load configuration
-config_path = Path(args.config)
-with open(config_path) as f:
+# Load config
+with open(args.config) as f:
     cfg = yaml.safe_load(f)
 
-# Create output directory for this run
+# Create output dirs
 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 run_dir = Path(f"outputs/run_{timestamp}")
 fig_dir = run_dir / "figures"
 config_dir = run_dir / "config"
-
 for d in [fig_dir, config_dir]:
     d.mkdir(parents=True, exist_ok=True)
-
-# Save a copy of the configuration
-shutil.copy(config_path, config_dir / "config.yaml")
+shutil.copy(args.config, config_dir / "config.yaml")
 
 print(f"JAX version: {jax.__version__}")
 print(f"NumPyro version: {numpyro.__version__}")
-print(f"Default backend: {jax.default_backend()}")
-print(f"Run directory: {run_dir}")
+print(f"Backend: {jax.default_backend()}")
+print(f"Run dir: {run_dir}")
 
-# Check available devices
 devices = jax.devices()
-print(f"\nAvailable JAX devices: {len(devices)}")
-for i, device in enumerate(devices):
-    print(f"  Device {i}: {device}")
+print(f"\nDevices: {len(devices)}")
+for i, d in enumerate(devices):
+    print(f"  {i}: {d}")
 
+# Model setup
+print("\n" + "="*80)
+print("MODEL CONFIGURATION")
+print("="*80)
 
-# ## 1. Model Configuration
-#
-# We'll set up the field-level model with desired parameters.
+model_config = default_config.copy()
+model_config["mesh_shape"] = tuple(cfg["model"]["mesh_shape"])
+model_config["box_shape"] = tuple(cfg["model"]["box_shape"])
+model_config["evolution"] = cfg["model"]["evolution"]
+model_config["lpt_order"] = cfg["model"]["lpt_order"]
+model_config["a_obs"] = cfg["model"]["a_obs"]
+model_config["gxy_density"] = cfg["model"]["gxy_density"]
 
-# In[ ]:
-
-
-# Create configuration from YAML
-config = default_config.copy()
-config["mesh_shape"] = tuple(cfg["model"]["mesh_shape"])
-config["box_shape"] = tuple(cfg["model"]["box_shape"])
-config["evolution"] = cfg["model"]["evolution"]
-config["lpt_order"] = cfg["model"]["lpt_order"]
-config["a_obs"] = cfg["model"]["a_obs"]
-config["gxy_density"] = cfg["model"]["gxy_density"]
-
-# Remove invalid keys that may be in default_config
-config.pop("scale_factor", None)
-config.pop("ng", None)
-
-print("Configuration:")
-for k, v in config.items():
-    print(f"  {k}: {v}")
-
-
-# In[6]:
-
-
-# Create model
-model = FieldLevelModel(**config)
+model = FieldLevelModel(**model_config)
 print(model)
+model.save(config_dir / "model.yaml")
 
+# Generate truth
+print("\n" + "="*80)
+print("GENERATING TRUTH")
+print("="*80)
 
-# ## 2. Generate Synthetic Data
-#
-# We'll create a "truth" dataset by forward-simulating the model with known parameters.
-
-# In[7]:
-
-
-# Truth parameters from config
 truth_params = cfg["truth_params"]
-
-print("Truth parameters:")
-for k, v in truth_params.items():
-    print(f"  {k}: {v}")
-
-
-# In[8]:
-
-
-# Generate truth data
 seed = cfg["seed"]
-rng = jr.key(seed)
-print(f"Random seed: {seed}")
+print(f"Truth params: {truth_params}")
+print(f"Seed: {seed}")
 
-truth = model.predict(samples=truth_params, hide_base=False, frombase=True, rng=rng)
+truth = model.predict(
+    samples=truth_params,
+    hide_base=False,
+    hide_samp=False,
+    frombase=True,
+    rng=jr.key(seed),
+)
+jnp.savez(config_dir / "truth.npz", **truth)
 
-obs_data = truth["obs"]
-print(f"Observed field shape: {obs_data.shape}")
-print(f"Mean galaxy count: {jnp.mean(obs_data):.4f}")
-print(f"Std: {jnp.std(obs_data):.4f}")
+print(f"\nObs shape: {truth['obs'].shape}")
+print(f"Mean count: {jnp.mean(truth['obs']):.4f}")
+print(f"Std: {jnp.std(truth['obs']):.4f}")
 
-
-# In[9]:
-
-
-# Visualize observed field (slice through center)
+# Visualize
 fig, axes = plt.subplots(1, 3, figsize=(15, 4))
-
-# Use mesh_shape//2 for center slices
-center_idx = config["mesh_shape"][0] // 2
-slices = [
-    obs_data[center_idx, :, :],
-    obs_data[:, center_idx, :],
-    obs_data[:, :, center_idx],
-]
-titles = [f"YZ slice (x={center_idx})", f"XZ slice (y={center_idx})", f"XY slice (z={center_idx})"]
-
+idx = model_config["mesh_shape"][0] // 2
+slices = [truth["obs"][idx,:,:], truth["obs"][:,idx,:], truth["obs"][:,:,idx]]
+titles = [f"YZ (x={idx})", f"XZ (y={idx})", f"XY (z={idx})"]
 for ax, data, title in zip(axes, slices, titles, strict=True):
     im = ax.imshow(data, origin="lower", cmap="viridis")
     ax.set_title(title)
-    ax.set_xlabel("Pixel")
-    ax.set_ylabel("Pixel")
     plt.colorbar(im, ax=ax, label="Galaxy count")
-
 plt.tight_layout()
-plt.savefig(fig_dir / "obs_field_slices.png")
+plt.savefig(fig_dir / "obs_slices.png", dpi=150)
 plt.close()
 
+# MCMC config
+print("\n" + "="*80)
+print("MCMC CONFIGURATION")
+print("="*80)
 
-# ## 3. Run MCMC Inference
-#
-# Now we'll use MCLMC to infer the parameters from the observed data.
-
-# In[10]:
-
-
-# Reset and condition model on observations
-model.reset()
-model.condition({"obs": obs_data})
-
-
-# In[11]:
-
-
-# MCMC configuration from config
 num_warmup = cfg["mcmc"]["num_warmup"]
 num_samples = cfg["mcmc"]["num_samples"]
 num_chains = cfg["mcmc"]["num_chains"]
 
-# Initialize from Kaiser posterior - MULTIPLE positions for chain diversity
-rng_init = jr.key(seed + 1)
-init_keys = jr.split(rng_init, num_chains)
+mclmc_cfg = cfg["mcmc"].get("mclmc", {})
+desired_energy_var = float(mclmc_cfg.get("desired_energy_var", 5e-4))
+diagonal_precond = bool(mclmc_cfg.get("diagonal_preconditioning", False))
+thinning = int(mclmc_cfg.get("thinning", 1))
 
-# Vectorized initialization (one init per chain)
-print(f"\nGenerating {num_chains} diverse initial positions...")
-init_params = jit(vmap(partial(model.kaiser_post, obs_data=obs_data, base=False)))(init_keys)
+print("Sampler: MCLMC")
+print(f"Warmup: {num_warmup}, Samples: {num_samples}, Chains: {num_chains}")
+print(f"Energy var: {desired_energy_var}, Diag precond: {diagonal_precond}, Thin: {thinning}")
 
-print("Initialized parameters (showing first chain):")
-for k, v in init_params.items():
-    if not k.startswith("init_mesh"):
-        print(f"  {k}: shape {v.shape}, first={v[0]:.6f}")
-
-
-# In[ ]:
-
-# MCLMC specific parameters
-mclmc_config = cfg["mcmc"].get("mclmc", {})
-desired_energy_var = float(
-    mclmc_config.get("desired_energy_var", 5e-4)
-)  # Convert to float in case YAML parsed as string
-diagonal_preconditioning = bool(mclmc_config.get("diagonal_preconditioning", False))
-thinning = int(mclmc_config.get("thinning", 1))
-
-print("\nMCMC settings:")
-print("  Sampler: MCLMC (with jit+vmap parallelization)")
-print(f"  Warmup: {num_warmup}")
-print(f"  Samples: {num_samples}")
-print(f"  Chains: {num_chains}")
-print(f"  Desired energy var: {desired_energy_var}")
-print(f"  Diagonal preconditioning: {diagonal_preconditioning}")
-print(f"  Thinning: {thinning}")
-
-# Check parallelization
 if len(devices) >= num_chains:
-    print(f"\n✓ {num_chains} chains will run in PARALLEL across {len(devices)} GPU(s)")
+    print(f"\n✓ {num_chains} chains // across {len(devices)} devices")
 else:
-    print(f"\n⚠️  {len(devices)} GPU(s) for {num_chains} chains - vmap will distribute optimally")
+    print(f"\n⚠️  {len(devices)} devices for {num_chains} chains")
 
+# STEP 1: Warmup mesh only (benchmark approach)
+print("\n" + "="*80)
+print("STEP 1: WARMUP MESH ONLY")
+print("="*80)
 
-# In[13]:
+model.reset()
+model.condition({"obs": truth["obs"]} | model.loc_fid, frombase=True)
+model.block()
 
-
-# Run MCLMC with PARALLEL execution using jit+vmap
-print("\n🚀 Starting PARALLEL MCLMC sampling...")
-
-# Use the model's built-in logpdf method
-logdf = model.logpdf
-
-# Warmup phase - PARALLELIZED
-if num_warmup > 0:
-    print(f"  Warmup ({num_warmup} steps, {num_chains} chains in parallel)...")
-    warmup_fn = jit(
-        vmap(
-            get_mclmc_warmup(
-                logdf=logdf,
-                n_steps=num_warmup,
-                config=None,
-                desired_energy_var=desired_energy_var,
-                diagonal_preconditioning=diagonal_preconditioning,
-            )
-        )
-    )
-
-    rng_warmup = jr.key(seed + 2)
-    warmup_keys = jr.split(rng_warmup, num_chains)
-    state, config = warmup_fn(warmup_keys, init_params)
-
-    print("  ✓ Warmup completed")
-    print(f"    Median logdensity: {jnp.median(state.logdensity):.2f}")
-    median_L_adapted = jnp.median(config.L)
-    print(f"    Adapted L (median): {median_L_adapted:.6f}")
-    print(f"    Median step_size: {jnp.median(config.step_size):.6f}")
-
-    # Recalculate L based on efficiency criterion (as in benchmark-field-level)
-    # See: https://github.com/hsimonfroy/benchmark-field-level/blob/main/examples/infer_model.ipynb#L870
-    eval_per_ess = 1e3  # Target: 1000 gradient evals per effective sample
-    median_step_size = jnp.median(config.step_size)
-    median_imm = jnp.median(config.inverse_mass_matrix, axis=0)
-
-    # Formula: L = factor * (eval_per_ess / 2) * step_size
-    # Factor 0.4 for MCLMC (empirical, from benchmark)
-    recalculated_L = 0.4 * eval_per_ess / 2 * median_step_size
-
-    config = MCLMCAdaptationState(
-        L=jnp.full(num_chains, recalculated_L),
-        step_size=jnp.full(num_chains, median_step_size),
-        inverse_mass_matrix=jnp.tile(median_imm, (num_chains, 1)),
-    )
-
-    print(f"    Recalculated L for efficiency: {recalculated_L:.6f} (was: {median_L_adapted:.6f})")
-else:
-    # Initialize without warmup
-    from blackjax.mcmc.mclmc import init as mclmc_init
-
-    rng_init_sampling = jr.key(seed + 2)
-    init_keys = jr.split(rng_init_sampling, num_chains)
-    state = jit(vmap(lambda k, p: mclmc_init(position=p, logdensity_fn=logdf, rng_key=k)))(
-        init_keys, init_params
-    )
-    config = None
-
-# Sampling phase - PARALLELIZED
-print(f"  Sampling ({num_samples} steps, {num_chains} chains in parallel)...")
-run_fn = jit(
-    vmap(
-        get_mclmc_run(
-            logdf=logdf,
-            n_samples=num_samples,
-            transform=None,
-            thinning=thinning,
-            progress_bar=True,
-        )
-    )
+init_params_ = jit(vmap(partial(model.kaiser_post, delta_obs=truth["obs"]-1)))(
+    jr.split(jr.key(45), num_chains)
 )
+init_mesh_ = {k: init_params_[k] for k in ["init_mesh_"]}
 
-rng_sample = jr.key(seed + 3)
-sample_keys = jr.split(rng_sample, num_chains)
-state, samples_dict = run_fn(sample_keys, state, config)
+print("Warming mesh (2^10 steps, cosmo/bias fixed)...")
+warmup_mesh_fn = jit(vmap(get_mclmc_warmup(
+    model.logpdf, n_steps=2**10, config=None,
+    desired_energy_var=1e-6, diagonal_preconditioning=False
+)))
 
-print("✓ MCMC sampling completed!")
+state_mesh, config_mesh = warmup_mesh_fn(jr.split(jr.key(43), num_chains), init_mesh_)
 
-# Organize samples by parameter (already properly shaped from vmap)
+print("✓ Mesh warmup done")
+print(f"  Logdens (median): {jnp.median(state_mesh.logdensity):.2f}")
+print(f"  L (median): {jnp.median(config_mesh.L):.6f}")
+print(f"  step_size (median): {jnp.median(config_mesh.step_size):.6f}")
+
+init_params_ |= state_mesh.position
+
+# STEP 2: Warmup all params
+print("\n" + "="*80)
+print("STEP 2: WARMUP ALL PARAMS")
+print("="*80)
+
+model.reset()
+model.condition({"obs": truth["obs"]})
+model.block()
+
+print(f"Warming all params ({num_warmup} steps)...")
+warmup_all_fn = jit(vmap(get_mclmc_warmup(
+    model.logpdf, n_steps=num_warmup, config=None,
+    desired_energy_var=desired_energy_var,
+    diagonal_preconditioning=diagonal_precond
+)))
+
+state, config = warmup_all_fn(jr.split(jr.key(43), num_chains), init_params_)
+
+print("✓ Full warmup done")
+print(f"  Logdens (median): {jnp.median(state.logdensity):.2f}")
+median_L_adapted = jnp.median(config.L)
+print(f"  Adapted L (median): {median_L_adapted:.6f}")
+median_ss = jnp.median(config.step_size)
+print(f"  step_size (median): {median_ss:.6f}")
+
+# Recalculate L (benchmark approach)
+eval_per_ess = 1e3
+median_imm = jnp.median(config.inverse_mass_matrix, axis=0)
+recalc_L = 0.4 * eval_per_ess / 2 * median_ss
+
+config = MCLMCAdaptationState(L=recalc_L, step_size=median_ss, inverse_mass_matrix=median_imm)
+config = tree.map(lambda x: jnp.broadcast_to(x, (num_chains, *jnp.shape(x))), config)
+
+print(f"\n  Recalculated L: {recalc_L:.6f} (was: {median_L_adapted:.6f})")
+
+jnp.savez(config_dir / "warmup_state.npz", **state.position)
+with open(config_dir / "warmup_config.yaml", "w") as f:
+    yaml.dump({"L": float(recalc_L), "step_size": float(median_ss), "eval_per_ess": float(eval_per_ess)}, f)
+
+# STEP 3: Sample
+print("\n" + "="*80)
+print("STEP 3: SAMPLING")
+print("="*80)
+
+run_fn = jit(vmap(get_mclmc_run(
+    model.logpdf, n_samples=num_samples,
+    thinning=thinning, progress_bar=False
+)))
+
+print(f"\n🚀 Running {num_chains} chains // for {num_samples} steps...")
+key = jr.key(42)
+key, run_key = jr.split(key)
+state, samples_dict = run_fn(jr.split(run_key, num_chains), state, config)
+
+print("\n✓ Sampling done!")
+
 samples = {}
-param_names = [k for k in samples_dict.keys() if k not in ["logdensity", "mse_per_dim", "n_evals"]]
-for param in param_names:
-    samples[param] = samples_dict[param]
+param_names = [k for k in samples_dict.keys() if k not in ["logdensity", "mse_per_dim"]]
+for p in param_names:
+    samples[p] = samples_dict[p]
 
-# Store info fields separately
-all_infos = [
-    {
-        "logdensity": samples_dict["logdensity"][i] if "logdensity" in samples_dict else None,
-        "mse_per_dim": samples_dict["mse_per_dim"][i] if "mse_per_dim" in samples_dict else None,
-        "n_evals": samples_dict["n_evals"][i] if "n_evals" in samples_dict else None,
-    }
-    for i in range(num_chains)
-]
+jnp.savez(config_dir / "samples.npz", **samples_dict)
+print(f"\nSamples saved: {config_dir / 'samples.npz'}")
+print(f"  Mean MSE/dim: {jnp.mean(samples_dict['mse_per_dim']):.6e}")
+print(f"  Final logdensity: {state.logdensity:.2f}")
 
+# Analysis
+print("\n" + "="*80)
+print("STATISTICS")
+print("="*80)
 
-# ## 4. Analyze Results
-#
-# Check convergence diagnostics and compare recovered parameters to truth.
+for p in param_names:
+    vals = samples[p].reshape(-1)
+    print(f"\n{p}: mean={np.mean(vals):.6f}, std={np.std(vals):.6f}")
 
-# In[14]:
+print("\n" + "="*80)
+print("PARAMETER RECOVERY")
+print("="*80)
 
-# Print MCMC diagnostics
-print("\nSampling statistics:")
-for param in param_names:
-    values = samples[param].reshape(-1)
-    print(f"  {param}:")
-    print(f"    Mean: {np.mean(values):.6f}")
-    print(f"    Std:  {np.std(values):.6f}")
+comp_params = ["Omega_m", "sigma8", "b1", "b2", "bs2", "bn2"]
+print(f"\n{'Param':<10} {'Truth':<10} {'Mean':<10} {'Std':<10} {'Bias(σ)':<10}")
+print("-"*60)
 
-print("\nDiagnostics:")
-if "mse_per_dim" in samples_dict:
-    for i_chain in range(num_chains):
-        mse = np.mean(samples_dict["mse_per_dim"][i_chain])
-        print(f"  Chain {i_chain}: MSE per dim = {mse:.6e}")
+for p in comp_params:
+    pk = p + "_"
+    if pk in samples:
+        vals = samples[pk].reshape(-1)
+        mean, std = np.mean(vals), np.std(vals)
+        truth_val = truth_params[p]
+        bias = (mean - truth_val) / std if std > 0 else 0
+        print(f"{p:<10} {truth_val:<10.4f} {mean:<10.4f} {std:<10.4f} {bias:<10.2f}")
 
+# Viz: Traces
+print("\n" + "="*80)
+print("VISUALIZATIONS")
+print("="*80)
 
-# In[15]:
-
-
-# Compare to truth
-comparison_params = ["Omega_m", "sigma8", "b1", "b2", "bs2", "bn2"]
-
-print("\nParameter recovery:")
-print(f"{'Parameter':<10} {'Truth':<10} {'Mean':<10} {'Std':<10} {'Bias (σ)':<10}")
-print("-" * 60)
-
-for param in comparison_params:
-    param_key = param + "_"
-    if param_key in samples:
-        chain_samples = samples[param_key].reshape(-1)  # Flatten chains
-        mean = np.mean(chain_samples)
-        std = np.std(chain_samples)
-        truth_val = truth_params[param]
-        bias_sigma = (mean - truth_val) / std if std > 0 else 0
-
-        print(f"{param:<10} {truth_val:<10.4f} {mean:<10.4f} {std:<10.4f} {bias_sigma:<10.2f}")
-
-
-# ## 5. Visualize Chains
-#
-# Plot trace plots and posterior distributions.
-
-# In[16]:
-
-
-# Trace plots
-fig, axes = plt.subplots(len(comparison_params), 1, figsize=(12, 2 * len(comparison_params)))
-
-for i, param in enumerate(comparison_params):
-    param_key = param + "_"
-    if param_key in samples:
+fig, axes = plt.subplots(len(comp_params), 1, figsize=(12, 2*len(comp_params)))
+for i, p in enumerate(comp_params):
+    pk = p + "_"
+    if pk in samples:
         ax = axes[i]
-        chain_data = samples[param_key]
-
-        # Plot each chain
-        for chain_idx in range(num_chains):
-            ax.plot(
-                chain_data[chain_idx, :], alpha=0.7, label=f"Chain {chain_idx}" if i == 0 else ""
-            )
-
-        # Truth line
-        ax.axhline(
-            truth_params[param],
-            color="red",
-            linestyle="--",
-            linewidth=2,
-            label="Truth" if i == 0 else "",
-        )
-
-        ax.set_ylabel(param)
-        ax.set_xlabel("Iteration")
-        if i == 0:
+        for c in range(num_chains):
+            ax.plot(samples[pk][c,:], alpha=0.7, lw=0.5, label=f"C{c}" if i==0 else "")
+        ax.axhline(truth_params[p], color="red", ls="--", lw=2, label="Truth" if i==0 else "")
+        ax.set_ylabel(p)
+        ax.set_xlabel("Iter")
+        if i==0:
             ax.legend(loc="upper right", fontsize=8)
         ax.grid(True, alpha=0.3)
-
 plt.tight_layout()
-plt.savefig(fig_dir / "trace_plots.png")
+plt.savefig(fig_dir / "traces.png", dpi=150)
 plt.close()
+print(f"✓ Traces: {fig_dir / 'traces.png'}")
 
-
-# In[17]:
-
-
-# Posterior distributions
+# Viz: Posteriors
 fig, axes = plt.subplots(2, 3, figsize=(15, 8))
 axes = axes.flatten()
-
-for i, param in enumerate(comparison_params):
-    param_key = param + "_"
-    if param_key in samples:
+for i, p in enumerate(comp_params):
+    pk = p + "_"
+    if pk in samples:
         ax = axes[i]
-        chain_samples = samples[param_key].reshape(-1)
-
-        # Histogram
-        ax.hist(chain_samples, bins=30, density=True, alpha=0.6, color="blue", edgecolor="black")
-
-        # Truth line
-        ax.axvline(truth_params[param], color="red", linestyle="--", linewidth=2, label="Truth")
-
-        # Mean line
-        mean_val = np.mean(chain_samples)
-        ax.axvline(mean_val, color="green", linestyle="-", linewidth=2, label="Mean")
-
-        ax.set_xlabel(param)
+        vals = samples[pk].reshape(-1)
+        ax.hist(vals, bins=30, density=True, alpha=0.6, color="blue", edgecolor="black")
+        ax.axvline(truth_params[p], color="red", ls="--", lw=2, label="Truth")
+        ax.axvline(np.mean(vals), color="green", ls="-", lw=2, label="Mean")
+        ax.set_xlabel(p)
         ax.set_ylabel("Density")
         ax.legend()
         ax.grid(True, alpha=0.3)
-
 plt.tight_layout()
-plt.savefig(fig_dir / "posterior_distributions.png")
+plt.savefig(fig_dir / "posteriors.png", dpi=150)
 plt.close()
+print(f"✓ Posteriors: {fig_dir / 'posteriors.png'}")
 
-
-# ## 6. Corner Plot
-#
-# Show joint posterior distributions.
-
-# In[18]:
-
-
+# Viz: Corner
 try:
     import corner
-
-    # Prepare data for corner plot - use comparison_params with underscore suffix
-    corner_labels = []
-    corner_data_list = []
-    corner_truths = []
-
-    for param in comparison_params:
-        param_key = param + "_"
-        if param_key in samples:
-            corner_labels.append(param)
-            corner_data_list.append(samples[param_key].reshape(-1))
-            corner_truths.append(truth_params[param])
-
-    corner_data = np.column_stack(corner_data_list)
-
-    fig = corner.corner(
-        corner_data,
-        labels=corner_labels,
-        truths=corner_truths,
-        quantiles=[0.16, 0.5, 0.84],
-        show_titles=True,
-        title_kwargs={"fontsize": 12},
-    )
-    plt.savefig(fig_dir / "corner_plot.png")
+    labels, data_list, truths = [], [], []
+    for p in comp_params:
+        pk = p + "_"
+        if pk in samples:
+            labels.append(p)
+            data_list.append(samples[pk].reshape(-1))
+            truths.append(truth_params[p])
+    data = np.column_stack(data_list)
+    fig = corner.corner(data, labels=labels, truths=truths,
+                        quantiles=[0.16, 0.5, 0.84],
+                        show_titles=True, title_kwargs={"fontsize": 12})
+    plt.savefig(fig_dir / "corner.png", dpi=150)
     plt.close()
-
+    print(f"✓ Corner: {fig_dir / 'corner.png'}")
 except ImportError:
-    print("Corner plot requires the 'corner' package. Install with: pip install corner")
+    print("⚠️  Corner skipped (install 'corner')")
 
-
-# ## Summary
-#
-# This script demonstrated:
-# - Creating a field-level model with specified configuration (Gaussian likelihood as in benchmark)
-# - Generating synthetic observations from truth parameters
-# - Running MCMC inference with MCLMC sampler (parallel GPU execution)
-# - Analyzing convergence and parameter recovery
-# - Visualizing chains and posteriors
-#
-# Note: Uses MCLMC sampler (already implemented in benchmark) instead of NUTS.
+# Summary
+print("\n" + "="*80)
+print("SUMMARY")
+print("="*80)
+print(f"\nOutputs: {run_dir}")
+print(f"  Config: {config_dir}")
+print(f"  Figures: {fig_dir}")
+print(f"  Samples: {config_dir / 'samples.npz'}")
+print(f"  Truth: {config_dir / 'truth.npz'}")
+print("\n" + "="*80)
+print("DONE")
+print("="*80)
