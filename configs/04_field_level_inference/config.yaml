@@ -8,13 +8,13 @@ slurm:
   qos: regular
   constraint: gpu
   nodes: 1
-  gpus: 4  # Use 4 GPUs for 8 parallel chains (2 chains per GPU)
-  time: "04:00:00"  # ~4h for full production run (see timing estimate below)
+  gpus: 2  # Use 2 GPUs for 2 parallel chains (1 chain per GPU)
+  time: "02:00:00"  # 2 hours (estimated: 40 min, margin for safety)
 
 # Model configuration (following benchmark defaults)
 model:
-  mesh_shape: [64, 64, 64]  # Standard resolution for benchmark
-  box_shape: [320.0, 320.0, 320.0]  # Mpc/h (benchmark default)
+  mesh_shape: [48, 48, 48]  # REDUCED for guaranteed memory safety (was 64)
+  box_shape: [200.0, 200.0, 200.0]  # Mpc/h REDUCED for memory (was 320)
   evolution: lpt
   lpt_order: 2  # 2LPT (more accurate than 1LPT, benchmark default)
   a_obs: 0.5  # Scale factor for observation (z~1, benchmark default)
@@ -33,11 +33,11 @@ truth_params:
 mcmc:
   # Stage 1: Mesh warmup (fixed in code at 2^10=1024 steps)
   # Stage 2: All parameters warmup
-  num_warmup: 1024  # 2^10 steps for all params (after mesh-only warmup)
+  num_warmup: 4096  # Steps for all params (after mesh-only warmup)
 
   # Stage 3: Sampling
-  num_samples: 512  # 2^9 samples per chain (32 total with thinning=16)
-  num_chains: 8  # Benchmark uses 8 chains for robust statistics
+  num_samples: 4096  # Samples per chain REDUCED (was 8192)
+  num_chains: 2  # CONSERVATIVE: 2 chains for guaranteed memory safety
 
   # MCLMC specific configuration
   mclmc:
@@ -47,49 +47,19 @@ mcmc:
 
     diagonal_preconditioning: false  # Benchmark uses false (full mass matrix)
 
-    thinning: 16  # Benchmark uses thinning=16 to reduce storage
-    # Effective samples: 512/16 = 32 per chain → 256 total samples
+    thinning: 8  # REDUCED thinning for more samples (was 16)
+    # Effective samples: 4096/8 = 512 per chain → 2048 total samples
 
     # L recalculation parameters (benchmark approach)
     eval_per_ess: 1000  # Target: 1000 evals per effective sample
     # L = 0.4 * eval_per_ess/2 * step_size (computed after warmup)
 
+# CMB Lensing configuration
+cmb_lensing:
+  enabled: false  # Set to true to compute convergence maps
+  field_size_deg: 5.0  # Angular field size in degrees
+  field_npix: 64  # Number of pixels for convergence map
+  z_source: 1.0  # Source redshift for lensing
+
 # Random seed
 seed: 42
-
-# ==========================================
-# TIMING ESTIMATE (based on benchmark paper)
-# ==========================================
-# Hardware: 1 GPU node with 4 A100 GPUs
-# Mesh: 64³ (~260k parameters total)
-#
-# Stage 1: Mesh warmup (2^10 steps, 8 chains)
-#   → ~10-15 min (mesh-only, fast)
-#
-# Stage 2: All params warmup (2^10 steps, 8 chains)
-#   → ~45-60 min (all params, slower)
-#
-# Stage 3: Sampling (512 steps, 8 chains, thinning=16)
-#   → ~2-3 hours (long trajectories with recalculated L)
-#
-# TOTAL: ~3-4 hours for complete run
-#
-# Memory: ~8-12 GB per GPU (well within A100's 40GB)
-# Output: ~256 samples (32 per chain) → ~500 MB saved data
-#
-# ==========================================
-# COST-PERFORMANCE TRADEOFFS
-# ==========================================
-# For faster testing (sacrifice statistical power):
-#   num_warmup: 512 (2^9)
-#   num_samples: 256 (2^8)
-#   num_chains: 4
-#   → Total time: ~1.5-2h, 128 effective samples
-#
-# For publication-quality results (better statistics):
-#   num_warmup: 2048 (2^11)
-#   num_samples: 1024 (2^10)
-#   num_chains: 8
-#   thinning: 32
-#   → Total time: ~6-8h, 256 effective samples (higher ESS)
-# ==========================================
