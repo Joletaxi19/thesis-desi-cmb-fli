@@ -97,8 +97,8 @@ truth = model.predict(
 jnp.savez(config_dir / "truth.npz", **truth)
 
 print(f"\nObs shape: {truth['obs'].shape}")
-print(f"Mean count: {jnp.mean(truth['obs']):.4f}")
-print(f"Std: {jnp.std(truth['obs']):.4f}")
+print(f"Mean count: {float(jnp.mean(truth['obs'])):.4f}")
+print(f"Std: {float(jnp.std(truth['obs'])):.4f}")
 
 # Visualize
 fig, axes = plt.subplots(1, 3, figsize=(15, 4))
@@ -166,9 +166,9 @@ warmup_mesh_fn = jit(
 state_mesh, config_mesh = warmup_mesh_fn(jr.split(jr.key(43), num_chains), init_mesh_)
 
 print("✓ Mesh warmup done")
-print(f"  Logdens (median): {jnp.median(state_mesh.logdensity):.2f}")
-print(f"  L (median): {jnp.median(config_mesh.L):.6f}")
-print(f"  step_size (median): {jnp.median(config_mesh.step_size):.6f}")
+print(f"  Logdens (median): {float(jnp.median(state_mesh.logdensity)):.2f}")
+print(f"  L (median): {float(jnp.median(config_mesh.L)):.6f}")
+print(f"  step_size (median): {float(jnp.median(config_mesh.step_size)):.6f}")
 
 init_params_ |= state_mesh.position
 
@@ -197,18 +197,18 @@ warmup_all_fn = jit(
 state, config = warmup_all_fn(jr.split(jr.key(43), num_chains), init_params_)
 
 print("✓ Full warmup done")
-print(f"  Logdens (median): {jnp.median(state.logdensity):.2f}")
-median_L_adapted = jnp.median(config.L)
+print(f"  Logdens (median): {float(jnp.median(state.logdensity)):.2f}")
+median_L_adapted = float(jnp.median(config.L))
 print(f"  Adapted L (median): {median_L_adapted:.6f}")
-median_ss = jnp.median(config.step_size)
+median_ss = float(jnp.median(config.step_size))
 print(f"  step_size (median): {median_ss:.6f}")
 
 # Recalculate L (benchmark approach)
 eval_per_ess = 1e3
 median_imm = jnp.median(config.inverse_mass_matrix, axis=0)
-recalc_L = 0.4 * eval_per_ess / 2 * median_ss
+recalc_L = float(0.4 * eval_per_ess / 2 * median_ss)
 
-config = MCLMCAdaptationState(L=recalc_L, step_size=median_ss, inverse_mass_matrix=median_imm)
+config = MCLMCAdaptationState(L=recalc_L, step_size=float(median_ss), inverse_mass_matrix=median_imm)
 config = tree.map(lambda x: jnp.broadcast_to(x, (num_chains, *jnp.shape(x))), config)
 
 print(f"\n  Recalculated L: {recalc_L:.6f} (was: {median_L_adapted:.6f})")
@@ -216,7 +216,7 @@ print(f"\n  Recalculated L: {recalc_L:.6f} (was: {median_L_adapted:.6f})")
 jnp.savez(config_dir / "warmup_state.npz", **state.position)
 with open(config_dir / "warmup_config.yaml", "w") as f:
     yaml.dump(
-        {"L": float(recalc_L), "step_size": float(median_ss), "eval_per_ess": float(eval_per_ess)},
+        {"L": recalc_L, "step_size": median_ss, "eval_per_ess": eval_per_ess},
         f,
     )
 
@@ -239,12 +239,12 @@ print("\n✓ Sampling done!")
 samples = {}
 param_names = [k for k in samples_dict.keys() if k not in ["logdensity", "mse_per_dim"]]
 for p in param_names:
-    samples[p] = samples_dict[p]
+    samples[p] = np.array(samples_dict[p])  # Convert JAX to NumPy for analysis
 
 jnp.savez(config_dir / "samples.npz", **samples_dict)
 print(f"\nSamples saved: {config_dir / 'samples.npz'}")
-print(f"  Mean MSE/dim: {jnp.mean(samples_dict['mse_per_dim']):.6e}")
-print(f"  Final logdensity: {state.logdensity:.2f}")
+print(f"  Mean MSE/dim: {float(jnp.mean(samples_dict['mse_per_dim'])):.6e}")
+print(f"  Final logdensity (mean): {float(jnp.mean(state.logdensity)):.2f}")
 
 # Analysis
 print("\n" + "=" * 80)
