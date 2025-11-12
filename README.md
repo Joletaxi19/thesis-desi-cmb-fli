@@ -41,7 +41,7 @@ Git hooks automatically format code on commit. CI runs tests on push.
 - Field-level inference on synthetic galaxy + CMB lensing data
 - Field-level inference on real data (DESI LRG × Planck/ACT κ-maps)
 
-See [`docs/pipeline.md`](docs/pipeline.md) for detailed implementation roadmap and [`notebooks/`](notebooks/) for interactive demonstrations.
+See [`pipeline.md`](pipeline.md) for detailed implementation roadmap and [`notebooks/`](notebooks/) for interactive demonstrations.
 
 ### Repository Structure
 - `src/desi_cmb_fli/`: Simulation and inference modules
