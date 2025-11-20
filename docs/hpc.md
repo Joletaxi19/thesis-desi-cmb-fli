@@ -33,8 +33,8 @@ All scripts are configured via YAML files in `configs/<script_name>/config.yaml`
 ### Submit a job
 
 ```bash
-# Example: Field-level inference
-./configs/04_field_level_inference/submit.py
+# Example : CMB lensing joint inference
+./configs/05_cmb_lensing/submit.py
 ```
 
 The submit script reads the YAML configuration and submits the job with appropriate SLURM parameters.
@@ -47,9 +47,10 @@ squeue -u $USER
 
 ### View outputs
 
-- Logs: `logs/<jobname>-<jobid>.out`
-- Figures: `outputs/run_<timestamp>/figures/`
-- Config used: `outputs/run_<timestamp>/config/`
+- Logs: `logs/<jobname>-<jobid>.out` (in home directory)
+- Figures: `$SCRATCH/outputs/run_<timestamp>/figures/`
+- Config used: `$SCRATCH/outputs/run_<timestamp>/config/`
+- Samples: `$SCRATCH/outputs/run_<timestamp>/config/*.npz`
 
 ### Test GPU (interactive)
 

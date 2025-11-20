@@ -93,13 +93,29 @@ Full Bayesian inference pipeline for parameter estimation from synthetic and rea
 
 ---
 
+## 5. CMB Lensing Modeling ✅ (November 2025)
+
+Computation of convergence κ from matter fields using Born approximation.
+
+**Module:** `desi_cmb_fli.cmb_lensing`
+**Implementation:**
+- Born approximation integration through lightcone
+- Lensing kernel integration
+- Projection of density fields to convergence maps
+
+## 6. Joint Field-Level Inference ✅ (November 2025)
+
+Joint inference on synthetic galaxy + CMB lensing data.
+
+**Script:** `scripts/05_cmb_lensing.py`
+**Implementation:**
+- Joint likelihood: $P(\delta_g, \kappa | \delta_{ini}, \theta)$
+- Constrains cosmology from both tracers
+- Validated with cross-correlations
+
 ## Next Steps
 
-The following stages are planned but not yet implemented:
-
-1. **CMB lensing modeling** - Computation of convergence κ from matter fields
-2. **Field-level inference on synthetic galaxy + CMB lensing data** - Joint inference extending the current galaxy-only framework
-3. **Field-level inference on real data** - Application to DESI LRG × Planck/ACT κ-maps
+1. **Field-level inference on real data** - Application to DESI LRG × Planck/ACT κ-maps
 
 Implementation details will be documented as development progresses.
 

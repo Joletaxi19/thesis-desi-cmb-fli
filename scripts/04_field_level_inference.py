@@ -12,6 +12,7 @@ Improvements:
 """
 
 import argparse
+import os
 import shutil
 from datetime import datetime
 from functools import partial
@@ -41,9 +42,11 @@ args = parser.parse_args()
 with open(args.config) as f:
     cfg = yaml.safe_load(f)
 
-# Create output dirs
+# Create output dirs in SCRATCH (not home)
+
+scratch_dir = os.environ.get("SCRATCH", "/pscratch/sd/j/jhawla")
 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-run_dir = Path(f"outputs/run_{timestamp}")
+run_dir = Path(scratch_dir) / "outputs" / f"run_{timestamp}"
 fig_dir = run_dir / "figures"
 config_dir = run_dir / "config"
 for d in [fig_dir, config_dir]:
@@ -229,7 +232,7 @@ run_fn = jit(
     vmap(get_mclmc_run(model.logpdf, n_samples=num_samples, thinning=thinning, progress_bar=False))
 )
 
-print(f"\n🚀 Running {num_chains} chains // for {num_samples} steps...")
+print(f"\nRunning {num_chains} chains // for {num_samples} steps...")
 key = jr.key(42)
 key, run_key = jr.split(key)
 state, samples_dict = run_fn(jr.split(run_key, num_chains), state, config)

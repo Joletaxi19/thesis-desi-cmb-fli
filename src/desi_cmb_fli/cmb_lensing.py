@@ -64,13 +64,11 @@ def convergence_Born(cosmo,
         # Extract the i-th plane and normalize
         plane = density_field[:, :, i]
         density_normalization = dz * r_planes[i] / a_planes[i]
-        plane = (plane - plane.mean()) * constant_factor * density_normalization
+        plane = (plane - 1.0) * constant_factor * density_normalization
 
-        # Interpolate at the requested angular coordinates
-        # coords * r gives physical positions, divide by dx to get pixel coordinates
-        im = map_coordinates(plane,
-                           coords * r_planes[i] / dx - 0.5,
-                           order=1, mode="wrap")
+        nx = density_field.shape[0]
+        pixel_coords = coords * r_planes[i] / dx + nx / 2.0
+        im = map_coordinates(plane, pixel_coords, order=1, mode="wrap")
 
         # Weight by lensing kernel: (1 - r/r_s)
         kernel = jnp.clip(1. - (r_planes[i] / r_s), 0, 1000).reshape([-1, 1, 1])
@@ -95,8 +93,6 @@ def density_field_to_convergence(density_field,
     """
     Convert a 3D density field from FieldLevelModel to a CMB convergence map.
 
-    This function bridges your existing galaxy clustering inference with CMB lensing.
-
     Parameters
     ----------
     density_field : array [Nx, Ny, Nz]
@@ -119,7 +115,8 @@ def density_field_to_convergence(density_field,
     """
     import numpy as np
 
-    mesh_shape = jnp.array(density_field.shape)
+    # Use .shape directly (tuple) to avoid JAX tracing issues in jnp.arange
+    mesh_shape = density_field.shape
 
     # Compute comoving distances for each slice
     dx = box_size[0] / mesh_shape[0]  # transverse cell size
@@ -131,15 +128,22 @@ def density_field_to_convergence(density_field,
     # Convert to scale factors (assuming box aligned with line of sight)
     a_planes = jc.background.a_of_chi(cosmo, r_planes)
 
-    # Create angular coordinate grid
-    xgrid, ygrid = np.meshgrid(
-        np.linspace(0, field_size_deg, field_npix, endpoint=False),
-        np.linspace(0, field_size_deg, field_npix, endpoint=False)
+    # Create angular coordinate grid (CENTERED on the box)
+    # map_coordinates expects coords[0]=rows (y), coords[1]=cols (x)
+    # Use indexing='ij' for direct (row, col) ordering
+    rowgrid, colgrid = np.meshgrid(
+        np.linspace(-field_size_deg/2, field_size_deg/2, field_npix, endpoint=False),
+        np.linspace(-field_size_deg/2, field_size_deg/2, field_npix, endpoint=False),
+        indexing='ij'
     )
-    coords = jnp.array(np.stack([xgrid, ygrid], axis=0) * u.deg.to(u.rad))
+    # With indexing='ij': rowgrid[i,j] varies with i, colgrid[i,j] varies with j
+    # Convert to radians AFTER stacking to avoid multiplying axis dimension
+    coords = jnp.array(np.stack([rowgrid, colgrid], axis=0)) * u.deg.to(u.rad)
 
     # Compute convergence
-    z_source = jnp.atleast_1d(z_source)
+    z_source_array = jnp.atleast_1d(z_source)
+    is_scalar = jnp.ndim(z_source) == 0
+
     kappa = convergence_Born(
         cosmo,
         density_field,
@@ -148,138 +152,11 @@ def density_field_to_convergence(density_field,
         dx,
         dz,
         coords,
-        z_source
+        z_source_array
     )
+
+    # Squeeze if z_source was scalar
+    if is_scalar:
+        kappa = kappa.squeeze(0)
 
     return kappa
-
-
-def pixel_window_function(ell, pixel_size_arcmin):
-    """
-    Calculate the pixel window function for a given multipole and pixel size.
-
-    Parameters
-    ----------
-    ell : array
-        Multipole values
-    pixel_size_arcmin : float
-        Pixel size in arcminutes
-
-    Returns
-    -------
-    W_ell : array
-        Pixel window function
-    """
-    import numpy as np
-
-    # Convert pixel size from arcminutes to radians
-    pixel_size_rad = pixel_size_arcmin * (np.pi / (180.0 * 60.0))
-
-    # Sinc^2 window function
-    W_ell = (jnp.sinc(ell * pixel_size_rad / (2 * np.pi)))**2
-
-    return W_ell
-
-
-def theoretical_cl(cosmo, nz_shear, ell, pixel_scale_arcmin, sigma_e=0.3):
-    """
-    Compute theoretical angular power spectrum for weak lensing.
-
-    Parameters
-    ----------
-    cosmo : jax_cosmo.Cosmology
-        Cosmology object
-    nz_shear : jax_cosmo.redshift.NzRedshift
-        Redshift distribution of sources
-    ell : array
-        Multipole values
-    pixel_scale_arcmin : float
-        Pixel scale in arcminutes
-    sigma_e : float
-        Intrinsic ellipticity dispersion
-
-    Returns
-    -------
-    cl_theory : array
-        Theoretical C_ell including pixel window
-    cl_noise : array
-        Noise C_ell
-    """
-    # Compute angular power spectrum
-    tracer = jc.probes.WeakLensing([nz_shear], sigma_e=sigma_e)
-    cl_theory = jc.angular_cl.angular_cl(
-        cosmo, ell, [tracer],
-        nonlinear_fn=jc.power.linear
-    )
-
-    # Apply pixel window function
-    cl_theory = cl_theory * pixel_window_function(ell, pixel_scale_arcmin)
-
-    # Compute noise
-    cl_noise = jc.angular_cl.noise_cl(ell, [tracer])
-
-    return cl_theory, cl_noise
-
-
-# Integration with FieldLevelModel
-def add_cmb_lensing_observable(field_level_model,
-                               field_size_deg=5.0,
-                               field_npix=64,
-                               z_source=1.0):
-    """
-    Extend FieldLevelModel predictions to include CMB lensing convergence.
-
-    This should be called after evolving the model to get density field.
-
-    Parameters
-    ----------
-    field_level_model : FieldLevelModel
-        Your existing field-level model
-    field_size_deg : float
-        Angular field size in degrees
-    field_npix : int
-        Number of pixels for convergence map
-    z_source : float or array
-        Source redshift(s)
-
-    Returns
-    -------
-    predict_with_lensing : function
-        Modified prediction function that includes convergence maps
-    """
-
-    def predict_with_lensing(rng, samples=None, **kwargs):
-        # Get standard predictions (galaxy field)
-        predictions = field_level_model.predict(rng, samples, **kwargs)
-
-        # If we have a 3D density field, compute convergence
-        if 'gxy_mesh' in predictions:
-            # Extract cosmology from predictions
-            cosmo_params = {k: predictions[k] for k in ['Omega_m', 'sigma8']
-                          if k in predictions}
-
-            from desi_cmb_fli.bricks import get_cosmology
-            cosmo = get_cosmology(**cosmo_params)
-
-            # Convert galaxy mesh to convergence
-            # Note: gxy_mesh is 1+delta_gxy, we need matter density
-            # Assuming bias b1 is available
-            b1 = predictions.get('b1', 1.0)
-            delta_matter = (predictions['gxy_mesh'] - 1.0) / b1
-            density_field = 1.0 + delta_matter
-
-            # Compute convergence
-            kappa = density_field_to_convergence(
-                density_field,
-                field_level_model.box_shape,
-                cosmo,
-                field_size_deg,
-                field_npix,
-                z_source
-            )
-
-            predictions['kappa'] = kappa
-
-        return predictions
-
-    return predict_with_lensing

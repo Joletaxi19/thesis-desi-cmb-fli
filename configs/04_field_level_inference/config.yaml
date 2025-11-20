@@ -54,12 +54,5 @@ mcmc:
     eval_per_ess: 1000  # Target: 1000 evals per effective sample
     # L = 0.4 * eval_per_ess/2 * step_size (computed after warmup)
 
-# CMB Lensing configuration
-cmb_lensing:
-  enabled: false  # Set to true to compute convergence maps
-  field_size_deg: 5.0  # Angular field size in degrees
-  field_npix: 64  # Number of pixels for convergence map
-  z_source: 1.0  # Source redshift for lensing
-
 # Random seed
 seed: 42
