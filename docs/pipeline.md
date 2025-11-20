@@ -118,7 +118,3 @@ Joint inference on synthetic galaxy + CMB lensing data.
 1. **Field-level inference on real data** - Application to DESI LRG × Planck/ACT κ-maps
 
 Implementation details will be documented as development progresses.
-
----
-
-Implementation notes, lessons learned, and validation outcomes should continue to be logged here to keep the thesis narrative synchronized with the evolving codebase.
