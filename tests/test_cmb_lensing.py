@@ -12,7 +12,6 @@ from jax_cosmo import Cosmology
 
 from desi_cmb_fli.cmb_lensing import (
     density_field_to_convergence,
-    pixel_window_function,
 )
 
 jax.config.update("jax_enable_x64", True)
@@ -181,21 +180,6 @@ def test_convergence_scales_with_amplitude(test_cosmology):
     assert jnp.allclose(ratio, expected_ratio, rtol=0.1), (
         f"Convergence should scale linearly: expected ratio {expected_ratio:.2f}, got {ratio:.2f}"
     )
-
-
-def test_pixel_window_function():
-    """Test pixel window function computation."""
-    ell = jnp.array([0.0, 100.0, 500.0, 1000.0])
-    theta_pix = 0.1  # degrees
-
-    W = pixel_window_function(ell, theta_pix)
-
-    # Check properties
-    assert W.shape == ell.shape
-    assert jnp.all(W <= 1.0), "Window function should be <= 1"
-    assert jnp.all(W >= 0.0), "Window function should be >= 0"
-    assert W[0] == 1.0, "Window should be 1 at ell=0"
-    assert jnp.all(jnp.diff(W) <= 0), "Window should be monotonically decreasing"
 
 
 def test_convergence_different_field_sizes(test_cosmology, test_density_field):
