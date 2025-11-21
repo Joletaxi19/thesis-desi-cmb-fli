@@ -5,7 +5,7 @@ The scientific objective is to extract cosmological information using field-leve
 
 ## Overview
 
-![Field-Level Inference Architecture](figures/fli_architecture.png)
+![Field-Level Inference Architecture](figures/fli_architecture.jpeg)
 
 *Figure: Complete field-level inference pipeline. The forward model (top) generates predictions from initial conditions δ_ini through N-body evolution (JAX-PM) to final density δ_final, which produces both galaxy overdensity δ_g and κ-map through ray-tracing. The MCLMC sampler compares these predictions with observed data (DESI LRG + Planck/ACT κ-map) to update the posterior distribution of cosmological parameters and the initial density field.*
 
@@ -93,12 +93,28 @@ Full Bayesian inference pipeline for parameter estimation from synthetic and rea
 
 ---
 
+## 5. CMB Lensing Modeling ✅ (November 2025)
+
+Computation of convergence κ from matter fields using Born approximation.
+
+**Module:** `desi_cmb_fli.cmb_lensing`
+**Implementation:**
+- Born approximation integration through lightcone
+- Lensing kernel integration
+- Projection of density fields to convergence maps
+
+## 6. Joint Field-Level Inference ✅ (November 2025)
+
+Joint inference on synthetic galaxy + CMB lensing data.
+
+**Script:** `scripts/05_cmb_lensing.py`
+**Implementation:**
+- Joint likelihood: $P(\delta_g, \kappa | \delta_{ini}, \theta)$
+- Constrains cosmology from both tracers
+- Validated with cross-correlations
+
 ## Next Steps
 
-The following stages are planned but not yet implemented:
-
-1. **CMB lensing modeling** - Computation of convergence κ from matter fields
-2. **Field-level inference on synthetic galaxy + CMB lensing data** - Joint inference extending the current galaxy-only framework
-3. **Field-level inference on real data** - Application to DESI LRG × Planck/ACT κ-maps
+1. **Field-level inference on real data** - Application to DESI LRG × Planck/ACT κ-maps
 
 Implementation details will be documented as development progresses.

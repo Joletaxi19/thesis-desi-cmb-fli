@@ -45,6 +45,7 @@ dependencies = [
   "blackjax>=1.0",
   "getdist>=1.4",
   "corner>=2.1.0",
+  "astropy>=5.0",
 ]
 
 [project.optional-dependencies]

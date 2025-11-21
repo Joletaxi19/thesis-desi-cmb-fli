@@ -1,0 +1,57 @@
+# Field-Level Inference Configuration (FIXED for OOM)
+# Based on benchmark-field-level paper (arXiv:2409.19049) MCLMC section
+
+# SLURM configuration for NERSC Perlmutter
+slurm:
+  job_name: fli-mclmc-fixed
+  account: desi
+  qos: regular
+  constraint: gpu
+  nodes: 1
+  gpus: 4  # Use 4 GPUs
+  time: "04:00:00"
+
+# Model configuration
+model:
+  mesh_shape: [64, 64, 64]  # REDUCED to 64^3 for memory safety
+  box_shape: [256.0, 256.0, 256.0]  # Mpc/h (resolution ~4 Mpc/h)
+  evolution: lpt
+  lpt_order: 2
+  a_obs: 0.5
+  gxy_density: 0.001
+
+# CMB lensing configuration
+cmb_lensing:
+  enabled: true
+  field_size_deg: 10.0  # Reduced field size slightly to match box
+  field_npix: 64  # Match mesh_shape for simplicity
+  z_source: 1100.0
+  noise_std: 0.0005
+
+# Truth parameters
+truth_params:
+  Omega_m: 0.3
+  sigma8: 0.8
+  b1: 1.0
+  b2: 0.0
+  bs2: 0.0
+  bn2: 0.0
+
+# MCMC configuration
+mcmc:
+  num_warmup: 2048
+
+  # Sampling
+  num_samples: 1024  # INCREASED samples per batch (was 512)
+  num_batches: 40   # INCREASED batches to get ~40k samples total
+  num_chains: 4     # Use all 4 GPUs
+
+  save_large_fields: false # Disable saving large fields to save disk/IO
+
+  mclmc:
+    desired_energy_var: 0.0005
+    diagonal_preconditioning: false
+    thinning: 1
+
+# Random seed
+seed: 42

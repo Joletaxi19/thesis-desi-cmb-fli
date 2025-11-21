@@ -1,6 +1,6 @@
 from __future__ import annotations  # for Union typing with | in python<3.10
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from functools import partial
 from pprint import pformat
 
@@ -56,6 +56,13 @@ default_config = {
     "observable": "field",  # 'field', TODO: 'powspec' (with poles), 'bispec'
     "los": (0.0, 0.0, 1.0),
     "poles": (0, 2, 4),
+    # CMB lensing parameters
+    "cmb_enabled": False,  # Enable CMB lensing in forward model and likelihood
+    "cmb_lensing_obs": None,  # Observed convergence map (set during conditioning)
+    "cmb_noise_std": 0.01,  # CMB convergence noise std
+    "cmb_field_size_deg": 5.0,  # Angular field size in degrees
+    "cmb_field_npix": 64,  # Number of pixels for convergence map
+    "cmb_z_source": 1100.0,  # CMB last scattering surface
     # Latents
     "precond": "kaiser_dyn",  # direct, fourier, kaiser, kaiser_dyn
     "latents": {
@@ -65,7 +72,7 @@ default_config = {
             "loc": 0.3111,
             "scale": 0.5,
             "scale_fid": 0.02,
-            "low": 0.05,  # XXX: Omega_m < Omega_b implies nan
+            "low": 0.1,  # XXX: Omega_m < Omega_b implies nan
             "high": 1.0,
         },
         "sigma8": {
@@ -311,6 +318,16 @@ class FieldLevelModel(Model):
     poles : array_like of int
         Power spectrum poles to compute.
         Only used for 'powspec' observable.
+    cmb_lensing_obs : array_like or None
+        Observed CMB convergence map. If None, no CMB constraint is applied.
+    cmb_noise_std : float
+        CMB convergence noise std.
+    cmb_field_size_deg : float
+        Angular field size in degrees for CMB.
+    cmb_field_npix : int
+        Number of pixels for CMB convergence map.
+    cmb_z_source : float
+        CMB source redshift (last scattering surface).
     precond : str
         Preconditioning method: 'direct', 'fourier', 'kaiser'.
     latents : dict
@@ -318,22 +335,29 @@ class FieldLevelModel(Model):
     """
 
     # Mesh and box parameters
-    mesh_shape: np.ndarray
-    box_shape: np.ndarray
+    mesh_shape: np.ndarray = field(default_factory=lambda: np.array(default_config["mesh_shape"]))
+    box_shape: np.ndarray = field(default_factory=lambda: np.array(default_config["box_shape"]))
     # Evolution
-    evolution: str
-    a_obs: float
-    nbody_steps: int
-    nbody_snapshots: int | list
-    lpt_order: int
+    evolution: str = field(default=default_config["evolution"])
+    a_obs: float = field(default=default_config["a_obs"])
+    nbody_steps: int = field(default=default_config["nbody_steps"])
+    nbody_snapshots: int | list = field(default=default_config["nbody_snapshots"])
+    lpt_order: int = field(default=default_config["lpt_order"])
     # Observable
-    observable: str
-    gxy_density: float
-    los: tuple
-    poles: tuple
-    # Latents
-    precond: str
-    latents: dict
+    observable: str = field(default=default_config["observable"])
+    gxy_density: float = field(default=default_config["gxy_density"])
+    los: tuple = field(default=default_config["los"])
+    poles: tuple = field(default=default_config["poles"])
+    # CMB lensing (with defaults for backward compatibility)
+    cmb_lensing_obs: np.ndarray | None = field(default=default_config["cmb_lensing_obs"])
+    cmb_noise_std: float = field(default=default_config["cmb_noise_std"])
+    cmb_field_size_deg: float = field(default=default_config["cmb_field_size_deg"])
+    cmb_field_npix: int = field(default=default_config["cmb_field_npix"])
+    cmb_z_source: float = field(default=default_config["cmb_z_source"])
+    cmb_enabled: bool = field(default=False)  # Explicit flag to enable CMB lensing
+    # Latents (required, from default_config)
+    precond: str = field(default=default_config["precond"])
+    latents: dict = field(default_factory=lambda: default_config["latents"])
 
     def __post_init__(self):
         self.latents = self._validate_latents()
@@ -367,9 +391,14 @@ class FieldLevelModel(Model):
         return out
 
     def _model(self, temp_prior=1.0, temp_lik=1.0):
-        x = self.prior(temp=temp_prior)
-        x = self.evolve(x)
-        return self.likelihood(x, temp=temp_lik)
+        cosmo, bias, init = self.prior(temp=temp_prior)
+        fields = self.evolve((cosmo, bias, init))
+        return self.likelihood(
+            cosmology=cosmo,
+            bias=bias,
+            temp=temp_lik,
+            **fields,
+        )
 
     def prior(self, temp=1.0):
         """
@@ -407,7 +436,7 @@ class FieldLevelModel(Model):
             # Kaiser model
             gxy_mesh = kaiser_model(cosmology, self.a_obs, bE=1 + bias["b1"], **init, los=self.los)
             gxy_mesh = deterministic("gxy_mesh", gxy_mesh)
-            return gxy_mesh
+            return {"gxy_mesh": gxy_mesh, "matter_mesh": None}
 
         # Create regular grid of particles
         pos = jnp.indices(self.mesh_shape, dtype=float).reshape(3, -1).T
@@ -447,6 +476,9 @@ class FieldLevelModel(Model):
             part = deterministic("nbody_pos", pos), vel
             pos, vel = tree.map(lambda x: x[-1], part)
 
+        # Preserve real-space positions for matter field painting
+        pos_real = pos
+
         # RSD displacement at a_obs
         pos += rsd(cosmology, self.a_obs, vel, self.los)
         pos, vel = deterministic("rsd_pos", pos), vel
@@ -455,19 +487,51 @@ class FieldLevelModel(Model):
         gxy_mesh = cic_paint(jnp.zeros(self.mesh_shape), pos, lbe_weights)
         gxy_mesh = deconv_paint(gxy_mesh, order=2)
         gxy_mesh = deterministic("gxy_mesh", gxy_mesh)
+        # Paint unbiased matter field in real space (before RSD)
+        matter_mesh = cic_paint(jnp.zeros(self.mesh_shape), pos_real)
+        matter_mesh = deconv_paint(matter_mesh, order=2)
+        matter_mesh = matter_mesh / jnp.mean(matter_mesh)
+        matter_mesh = deterministic("matter_mesh", matter_mesh)
 
-        return gxy_mesh
+        return {"gxy_mesh": gxy_mesh, "matter_mesh": matter_mesh}
 
-    def likelihood(self, mesh, temp=1.0):
+    def likelihood(self, gxy_mesh, matter_mesh=None, cosmology=None, bias=None, temp=1.0):
         """
         A likelihood for cosmological model.
 
         Return an observed mesh sampled from a location mesh with observational variance.
+        Optionally includes CMB lensing likelihood if cmb_lensing_obs is provided.
         """
 
         if self.observable == "field":
-            # Gaussian noise
-            obs_mesh = sample("obs", dist.Normal(mesh, (temp / self.gxy_count) ** 0.5))
+            # Galaxy likelihood
+            obs_mesh = sample("obs", dist.Normal(gxy_mesh, (temp / self.gxy_count) ** 0.5))
+
+            # CMB lensing likelihood (if enabled)
+            if self.cmb_enabled and cosmology is not None and bias is not None:
+                from desi_cmb_fli.cmb_lensing import density_field_to_convergence
+
+                density_field = matter_mesh
+
+                # Compute predicted convergence
+                kappa_pred = density_field_to_convergence(
+                    density_field,
+                    self.box_shape,
+                    cosmology,
+                    self.cmb_field_size_deg,
+                    self.cmb_field_npix,
+                    self.cmb_z_source,
+                )
+
+                # Squeeze if needed (single z_source)
+                if kappa_pred.ndim == 3 and kappa_pred.shape[0] == 1:
+                    kappa_pred = kappa_pred.squeeze(0)
+
+                kappa_pred = deterministic("kappa_pred", kappa_pred)
+
+                # CMB lensing likelihood
+                sample("kappa_obs", dist.Normal(kappa_pred, self.cmb_noise_std / jnp.sqrt(temp)))
+
             return obs_mesh  # NOTE: mesh is 1+delta_obs
 
     def reparam(self, params: dict, fourier=True, inv=False, temp=1.0):
