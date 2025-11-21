@@ -6,11 +6,13 @@ Repository for a thesis project targeting **field-level inference (FLI)** on DES
 - Construction of a reproducible FLI workflow that ingests DESI galaxy
   clustering data and CMB lensing maps (Planck PR4, ACT DR6).
 - Delivery of joint cosmological constraints from the cross-correlation of those
-  observables, with clear validation and documentation.
+  observables.
 
 ## Code Attribution
 
 This repository builds upon the [benchmark-field-level](https://github.com/hsimonfroy/benchmark-field-level) framework by Hugo Simonfroy.
+
+The `cmb_lensing.py` module is built upon the implementation by François Lanusse (see [repository](https://github.com/EiffL/LPTLensingComparison/blob/c407fdc8c70ebc37bd213be4e79eadd3a619d848/jax_lensing/model.py)).
 
 ## Quick Start
 
@@ -34,24 +36,15 @@ Git hooks automatically format code on commit. CI runs tests on push.
 
 ## Pipeline Status
 
-**✅ Completed:** Initial conditions, gravitational evolution, galaxy bias modeling, and field-level inference on synthetic galaxy data
+**✅ Completed:** Initial conditions, gravitational evolution, galaxy bias modeling, CMB lensing modeling, and field-level inference on synthetic galaxy + CMB lensing data
 
 **🚧 Next Steps:**
-- CMB lensing modeling (convergence κ from matter fields)
-- Field-level inference on synthetic galaxy + CMB lensing data
 - Field-level inference on real data (DESI LRG × Planck/ACT κ-maps)
 
 See [`pipeline.md`](pipeline.md) for detailed implementation roadmap and [`notebooks/`](notebooks/) for interactive demonstrations.
 
-### Repository Structure
-- `src/desi_cmb_fli/`: Simulation and inference modules
-- `configs/`: Experiment configurations (tracer selections, masks, inference grids)
-- `tests/`: Unit, integration, and regression tests
-- `notebooks/`: Interactive demonstrations and tutorials
-- `docs/`: Scientific documentation and pipeline details
-
 ## Citation
-The project scaffold for the FLI × DESI × CMB lensing analysis should be cited
+The project for the FLI × DESI × CMB lensing analysis should be cited
 using `CITATION.cff`.
 
 ## License
