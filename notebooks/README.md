@@ -7,8 +7,10 @@ Interactive demonstrations and tutorials for the DESI × CMB lensing field-level
 **Interactive**: Open `.ipynb` files in Jupyter/VS Code for exploration and visualization.
 
 **Batch (NERSC Perlmutter)**: For GPU-intensive tasks (MCMC inference), notebooks have been converted to Python scripts in `scripts/` with YAML configuration in `configs/`.
-
-See [`docs/hpc.md`](../docs/hpc.md) for detailed instructions on running batch jobs.
+- Scripts support multi-GPU parallelization and use MCLMC for efficiency.
+- Outputs (plots, config) are stored in `outputs/run_{timestamp}/`.
+- Terminal output is logged in `logs/`.
+- See [`docs/hpc.md`](../docs/hpc.md) for detailed instructions.
 
 ## Available Notebooks
 
@@ -62,15 +64,28 @@ See [`docs/hpc.md`](../docs/hpc.md) for detailed instructions on running batch j
 - Parameter recovery validation
 - Visualizations: trace plots, posterior distributions, corner plots
 
-**Note:** The script version (`scripts/04_field_level_inference.py`) is optimized for batch execution on NERSC Perlmutter with multi-GPU parallelization and uses MCLMC instead of NUTS for efficiency. It works with a configuration YAML file, see [`docs/hpc.md`](../docs/hpc.md) for details. The used configuration file and the plots generated are stored in 'outputs/run_{timestamp}/'. The terminal output can be followed in real-time in the 'logs/' directory.
+**Note:** For production runs, use the optimized script `scripts/04_field_level_inference.py`. See "Running Notebooks" above for details.
+
+---
+
+
+### 05_cmb_lensing.ipynb
+**Status:** ✅ Complete
+**Purpose:** Demonstrate joint field-level inference with Galaxies + CMB Lensing on CPU
+
+**Contents:**
+- Model configuration with CMB lensing enabled
+- Synthetic observation generation (Galaxies + CMB convergence $\kappa$)
+- Joint inference using MCLMC
+- Visualization of results
+
+**Note:** For production runs, use the optimized script `scripts/05_cmb_lensing.py`. See "Running Notebooks" above for details.
 
 ---
 
 ## Next Notebooks (Planned)
 
 Future notebooks will cover:
-- CMB lensing modeling
-- Joint inference on synthetic galaxy + CMB lensing data
 - Real data inference with DESI LRG × Planck/ACT κ-maps
 
 Details will be added as implementation progresses.
