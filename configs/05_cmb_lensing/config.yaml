@@ -1,9 +1,9 @@
-# Field-Level Inference Configuration (FIXED for OOM)
+# Field-Level Inference Configuration
 # Based on benchmark-field-level paper (arXiv:2409.19049) MCLMC section
 
 # SLURM configuration for NERSC Perlmutter
 slurm:
-  job_name: fli-mclmc-fixed
+  job_name: fli-mclmc
   account: desi
   qos: regular
   constraint: gpu
@@ -13,11 +13,11 @@ slurm:
 
 # Model configuration
 model:
-  mesh_shape: [64, 64, 64]  # REDUCED to 64^3 for memory safety
-  box_shape: [256.0, 256.0, 256.0]  # Mpc/h (resolution ~4 Mpc/h)
+  mesh_shape: [64, 64, 64]
+  box_shape: [256.0, 256.0, 256.0]  # Mpc/h
   evolution: lpt
   lpt_order: 2
-  a_obs: 0.5
+  a_obs: 0.333
   gxy_density: 0.001
 
 # CMB lensing configuration
@@ -26,7 +26,7 @@ cmb_lensing:
   field_size_deg: 10.0  # Reduced field size slightly to match box
   field_npix: 64  # Match mesh_shape for simplicity
   z_source: 1100.0
-  noise_std: 0.0005
+  noise_std: 0.00025
 
 # Truth parameters
 truth_params:

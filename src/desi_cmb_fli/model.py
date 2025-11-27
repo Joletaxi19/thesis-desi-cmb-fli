@@ -4,6 +4,7 @@ from dataclasses import asdict, dataclass, field
 from functools import partial
 from pprint import pformat
 
+import jax_cosmo as jc
 import numpy as np
 import numpyro.distributions as dist
 from IPython.display import display
@@ -521,6 +522,7 @@ class FieldLevelModel(Model):
                     self.cmb_field_size_deg,
                     self.cmb_field_npix,
                     self.cmb_z_source,
+                    box_center_chi=jc.background.radial_comoving_distance(cosmology, jnp.atleast_1d(self.a_obs))[0],
                 )
 
                 # Squeeze if needed (single z_source)

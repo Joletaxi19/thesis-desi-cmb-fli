@@ -19,7 +19,6 @@ os.environ["TF_GPU_ALLOCATOR"] = "cuda_malloc_async"
 os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
 
 from datetime import datetime
-from functools import partial
 from pathlib import Path
 
 import jax
@@ -50,7 +49,8 @@ with open(args.config) as f:
 # Create output dirs in SCRATCH
 
 scratch_dir = os.environ.get("SCRATCH", "/pscratch/sd/j/jhawla")
-timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+start_time = datetime.now()
+timestamp = start_time.strftime("%Y%m%d_%H%M%S")
 run_dir = Path(scratch_dir) / "outputs" / f"run_{timestamp}"
 fig_dir = run_dir / "figures"
 config_dir = run_dir / "config"
@@ -95,6 +95,55 @@ if cmb_enabled:
     print(f"  Field: {model_config['cmb_field_size_deg']}° × {model_config['cmb_field_npix']}px")
     print(f"  z_source: {model_config['cmb_z_source']}")
     print(f"  Noise σ: {model_config['cmb_noise_std']}")
+
+    print(f"  Noise σ: {model_config['cmb_noise_std']}")
+
+    # --- Validation: Lensing Kernel Coverage ---
+    print("\nComputing lensing efficiency...")
+    from desi_cmb_fli.bricks import get_cosmology
+    from desi_cmb_fli.cmb_lensing import compute_lensing_efficiency
+
+    # Create a temporary cosmology object for calculation
+    # We use truth params or defaults if not available
+    truth_params_val = cfg.get("truth_params", {})
+    cosmo_val = get_cosmology(
+        Omega_m=truth_params_val.get("Omega_m", 0.3),
+        sigma8=truth_params_val.get("sigma8", 0.8),
+        b1=1.0, b2=0.0, bs2=0.0, bn2=0.0 # Bias doesn't matter for distance
+    )
+
+    # Calculate box center chi based on a_obs
+    import jax.numpy as jnp
+    import jax_cosmo as jc
+    chi_center_val = jc.background.radial_comoving_distance(cosmo_val, jnp.atleast_1d(model_config["a_obs"]))[0]
+    chi_center_val = float(chi_center_val)
+    box_size_z = model_config["box_shape"][2]
+
+    z_grid, kernel, fraction, box_mask = compute_lensing_efficiency(
+        cosmo_val,
+        model_config["cmb_z_source"],
+        chi_center_val,
+        box_size_z
+    )
+
+    print(f"  Box center: z ~ {1.0/model_config['a_obs'] - 1.0:.2f} (chi = {chi_center_val:.1f} Mpc/h)")
+    print(f"  Box coverage: {fraction*100:.2f}% of the lensing kernel")
+
+    # Plot kernel and box coverage
+    plt.figure(figsize=(8, 5))
+    # Use semilogy for better visibility of the kernel structure
+    plt.semilogy(z_grid, kernel, label=r"$W^\kappa(z)$")
+    plt.fill_between(z_grid, 1e-10, kernel, where=box_mask, alpha=0.3, color="green", label=f"Box ({fraction:.1%})")
+    plt.xlabel("Redshift z")
+    plt.ylabel(r"$W^\kappa(z)$")
+    plt.title(f"CMB Lensing Kernel Coverage (Box center z={1/model_config['a_obs']-1:.2f})")
+    plt.legend()
+    plt.grid(True, alpha=0.3, which="both", ls="-")
+    plt.ylim(bottom=1e-5 * np.max(kernel)) # Set reasonable bottom limit
+    plt.savefig(fig_dir / "lensing_kernel_coverage.png", dpi=150)
+    plt.close()
+    print(f"✓ Lensing coverage plot: {fig_dir / 'lensing_kernel_coverage.png'}")
+    # -------------------------------------------
 
 else:
     print("\n⚠️  CMB lensing DISABLED (galaxies only)")
@@ -198,7 +247,14 @@ if cmb_enabled and "kappa_obs" in truth:
     # Distance planes
     dx = box_size / mesh_shape_val
     dz = box_size / mesh_shape_val
-    r_planes = (np.arange(mesh_shape_val) + 0.5) * dz
+
+    # Recalculate box center for validation (same as in model)
+    # Use the same cosmology as truth generation
+    chi_center_val = jc.background.radial_comoving_distance(cosmo_val, jnp.atleast_1d(model_config["a_obs"]))[0]
+    chi_center_val = float(chi_center_val)
+
+    r_start = chi_center_val - box_size / 2.0
+    r_planes = r_start + (np.arange(mesh_shape_val) + 0.5) * dz
 
     # Project galaxy field (SUM along LOS, like kappa integral)
     gxy_field = np.array(truth['obs'])
@@ -301,9 +357,14 @@ model.condition(condition_dict | model.loc_fid, frombase=True)
 model.block()
 
 # Initialize (multi-chains)
-init_params_ = pmap(jit(partial(model.kaiser_post, delta_obs=truth["obs"] - 1)))(
-    jr.split(jr.key(45), num_chains)
-)
+delta_obs = truth["obs"] - 1
+rngs = jr.split(jr.key(45), num_chains)
+
+# Define a wrapper to handle the method call cleanly with pmap
+def init_fn(rng, delta):
+    return model.kaiser_post(rng, delta)
+
+init_params_ = pmap(jit(init_fn), in_axes=(0, None))(rngs, delta_obs)
 init_mesh_ = {k: init_params_[k] for k in ["init_mesh_"]}
 
 print("Warming mesh (2^10 steps, cosmo/bias fixed)...")
@@ -505,6 +566,10 @@ def compute_rhat(chains, burnin_frac=0.5):
     # Grand mean
     grand_mean = np.mean(chain_means)
 
+    # R-hat
+    if num_chains < 2:
+        return float('nan')
+
     # Between-chain variance
     B = num_samples / (num_chains - 1) * np.sum((chain_means - grand_mean)**2)
 
@@ -599,48 +664,48 @@ plt.savefig(fig_dir / "posteriors.png", dpi=150)
 plt.close()
 print(f"✓ Posteriors: {fig_dir / 'posteriors.png'}")
 
-# Viz: Corner
+# Viz: GetDist Triangle Plot
 try:
-    import corner
+    from getdist import MCSamples, plots
 
-    labels, data_list, truths = [], [], []
-    for p in comp_params:
-        if p in physical_samples:
-            labels.append(p)
-            data_list.append(physical_samples[p].reshape(-1))  # Flatten (chains, samples) → 1D
-            truths.append(truth_params.get(p, None))
+    print("\nGenerating GetDist triangle plot...")
 
-    if data_list:
-        data = np.column_stack(data_list)
-        fig = corner.corner(
-            data,
-            labels=labels,
-            truths=truths,
-            quantiles=[0.16, 0.5, 0.84],
-            show_titles=True,
-            title_kwargs={"fontsize": 12},
-        )
-        plt.savefig(fig_dir / "corner.png", dpi=150)
-        plt.close()
-        print(f"✓ Corner: {fig_dir / 'corner.png'}")
+    gd_samples = []
+
+    # Check which params are available
+    available_params = [p for p in comp_params if p in physical_samples]
+    available_labels = list(available_params)
+    available_truths = [truth_params.get(p, None) for p in available_params]
+
+    if available_params:
+        # Iterate over chains
+        for c in range(num_chains):
+            # Stack parameters for this chain: (nsamples, nparams)
+            chain_data = []
+            for p in available_params:
+                chain_data.append(physical_samples[p][c, :])
+
+            # Transpose to (nsamples, nparams)
+            chain_data = np.column_stack(chain_data)
+            gd_samples.append(chain_data)
+            print(f"  Chain {c} shape: {chain_data.shape}")
+
+        # Create MCSamples object
+        # settings={'ignore_rows': 0.5} to discard first 50% as burn-in (consistent with R-hat check)
+        samples_gd = MCSamples(samples=gd_samples, names=available_params, labels=available_labels,
+                               settings={'ignore_rows': 0.5})
+
+        # Plot
+        g = plots.get_subplot_plotter()
+        g.triangle_plot([samples_gd], filled=True, title_limit=1)
+
+        g.export(str(fig_dir / "corner.png"))
+        print(f"✓ GetDist plot: {fig_dir / 'corner.png'}")
+
 except ImportError:
-    print("⚠️  Corner skipped (install 'corner')")
-
-# CMB-specific diagnostics
-if cmb_enabled:
-    print("\n" + "=" * 80)
-    print("CMB LENSING DIAGNOSTICS")
-    print("=" * 80)
-
-    # Generate posterior kappa maps
-    print("\nGenerating posterior convergence maps...")
-
-    # IMPORTANT: Reset model to remove conditioning on kappa_obs
-    model.reset()
-
-    kappa_samples = [] # Empty to skip the complex plotting block below
-
-
+    print("⚠️  GetDist skipped (install 'getdist')")
+except Exception as e:
+    print(f"⚠️  GetDist plotting failed: {e}")
 
 # Summary
 print("\n" + "=" * 80)
@@ -656,5 +721,8 @@ if cmb_enabled:
 else:
     print("\n✓ Galaxy-only inference")
 print("\n" + "=" * 80)
+end_time = datetime.now()
+duration = end_time - start_time
+print(f"Total run time: {duration}")
 print("DONE")
 print("=" * 80)

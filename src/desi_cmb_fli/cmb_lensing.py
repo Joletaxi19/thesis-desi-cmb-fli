@@ -89,7 +89,8 @@ def density_field_to_convergence(density_field,
                                  cosmo,
                                  field_size_deg,
                                  field_npix,
-                                 z_source=1.0):
+                                 z_source=1.0,
+                                 box_center_chi=None):
     """
     Convert a 3D density field from FieldLevelModel to a CMB convergence map.
 
@@ -107,6 +108,9 @@ def density_field_to_convergence(density_field,
         Number of pixels for the convergence map
     z_source : float or array
         Source redshift(s)
+    box_center_chi : float, optional
+        Comoving distance to the center of the box (Mpc/h).
+        If None, the box is assumed to start at chi=0.
 
     Returns
     -------
@@ -123,7 +127,12 @@ def density_field_to_convergence(density_field,
     dz = box_size[2] / mesh_shape[2]  # radial cell size
 
     # Radial positions of slices (comoving distance)
-    r_planes = (jnp.arange(mesh_shape[2]) + 0.5) * dz
+    if box_center_chi is None:
+        r_start = 0.0
+    else:
+        r_start = box_center_chi - box_size[2] / 2.0
+
+    r_planes = r_start + (jnp.arange(mesh_shape[2]) + 0.5) * dz
 
     # Convert to scale factors (assuming box aligned with line of sight)
     a_planes = jc.background.a_of_chi(cosmo, r_planes)
@@ -136,8 +145,6 @@ def density_field_to_convergence(density_field,
         np.linspace(-field_size_deg/2, field_size_deg/2, field_npix, endpoint=False),
         indexing='ij'
     )
-    # With indexing='ij': rowgrid[i,j] varies with i, colgrid[i,j] varies with j
-    # Convert to radians AFTER stacking to avoid multiplying axis dimension
     coords = jnp.array(np.stack([rowgrid, colgrid], axis=0)) * u.deg.to(u.rad)
 
     # Compute convergence
@@ -160,3 +167,70 @@ def density_field_to_convergence(density_field,
         kappa = kappa.squeeze(0)
 
     return kappa
+
+
+def compute_lensing_efficiency(cosmo, z_source, box_center_chi, box_size_z):
+    """
+    Compute the fraction of the CMB lensing kernel captured by the simulation box.
+
+    Parameters
+    ----------
+    cosmo : jax_cosmo.Cosmology
+    z_source : float
+        Source redshift
+    box_center_chi : float
+        Comoving distance to the center of the box (Mpc/h)
+    box_size_z : float
+        Size of the box along the line of sight (Mpc/h)
+
+    Returns
+    -------
+    z_grid : array
+        Redshift grid
+    kernel : array
+        Lensing kernel W_kappa(z)
+    fraction : float
+        Fraction of the integral captured by the box
+    box_mask : array
+        Boolean mask indicating the box region
+    """
+    import numpy as np
+
+    # Create a fine grid of redshifts
+    z_grid = np.linspace(0, z_source, 10000)
+
+    # Compute comoving distance
+    chi_grid = jax.device_get(jc.background.radial_comoving_distance(cosmo, 1/(1+z_grid)))
+    chi_source = jax.device_get(jc.background.radial_comoving_distance(cosmo, 1/(1+z_source)))
+
+    # Compute lensing kernel W_kappa
+    a_grid = 1.0 / (1.0 + z_grid)
+    kernel_chi = (chi_grid / a_grid) * (chi_source - chi_grid) / chi_source
+    kernel_chi = np.clip(kernel_chi, 0, None) # Ensure non-negative
+
+    # H_grid = jax.device_get(jc.background.H(cosmo, a_grid))
+    dchi_dz = np.gradient(chi_grid, z_grid)
+    kernel_z = kernel_chi * dchi_dz
+
+    # Define box boundaries
+    box_start = box_center_chi - box_size_z / 2.0
+    box_end = box_center_chi + box_size_z / 2.0
+
+    # Mask for the box
+    box_mask = (chi_grid >= box_start) & (chi_grid <= box_end)
+
+    # Integrate
+    total_integral = np.trapz(kernel_z, z_grid)
+
+    if total_integral <= 0:
+        return z_grid, kernel_z, 0.0, box_mask
+
+    # Integral within box
+    kernel_in_box = kernel_z.copy()
+    kernel_in_box[~box_mask] = 0.0
+
+    box_integral = np.trapz(kernel_in_box, z_grid)
+
+    fraction = box_integral / total_integral
+
+    return z_grid, kernel_z, fraction, box_mask
