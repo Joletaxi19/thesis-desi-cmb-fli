@@ -14,7 +14,7 @@ slurm:
 # Model configuration
 model:
   mesh_shape: [64, 64, 64]
-  box_shape: [256.0, 256.0, 256.0]  # Mpc/h
+  box_shape: [960.0, 960.0, 960.0]  # Mpc/h (Resolution: 15 Mpc/h)
   evolution: lpt
   lpt_order: 2
   a_obs: 0.333
@@ -23,16 +23,14 @@ model:
 # CMB lensing configuration
 cmb_lensing:
   enabled: true
-  field_size_deg: 10.0  # Reduced field size slightly to match box
-  field_npix: 64  # Match mesh_shape for simplicity
   z_source: 1100.0
-  noise_std: 0.00025
+  noise_arcmin: 1.0 # Effective noise normalized to 1 arcmin scale
 
 # Truth parameters
 truth_params:
   Omega_m: 0.3
   sigma8: 0.8
-  b1: 1.0
+  b1: 1.5
   b2: 0.0
   bs2: 0.0
   bn2: 0.0
@@ -42,11 +40,11 @@ mcmc:
   num_warmup: 2048
 
   # Sampling
-  num_samples: 1024  # INCREASED samples per batch (was 512)
-  num_batches: 40   # INCREASED batches to get ~40k samples total
-  num_chains: 4     # Use all 4 GPUs
+  num_samples: 1024
+  num_batches: 40
+  num_chains: 4
 
-  save_large_fields: false # Disable saving large fields to save disk/IO
+  save_large_fields: false
 
   mclmc:
     desired_energy_var: 0.0005

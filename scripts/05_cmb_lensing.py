@@ -88,15 +88,16 @@ cmb_enabled = cmb_cfg.get("enabled", False)
 if cmb_enabled:
     print("\n✓ CMB lensing ENABLED (joint inference)")
     model_config["cmb_enabled"] = True  # Enable CMB in model
-    model_config["cmb_field_size_deg"] = float(cmb_cfg.get("field_size_deg", 5.0))
-    model_config["cmb_field_npix"] = int(cmb_cfg.get("field_npix", 64))
-    model_config["cmb_z_source"] = float(cmb_cfg.get("z_source", 1100.0))
-    model_config["cmb_noise_std"] = float(cmb_cfg.get("noise_std", 0.01))
-    print(f"  Field: {model_config['cmb_field_size_deg']}° × {model_config['cmb_field_npix']}px")
-    print(f"  z_source: {model_config['cmb_z_source']}")
-    print(f"  Noise σ: {model_config['cmb_noise_std']}")
+    # Field size will be auto-calculated by the model
+    model_config["cmb_field_size_deg"] = None
+    model_config["cmb_field_npix"] = int(cmb_cfg["field_npix"]) if "field_npix" in cmb_cfg else None
 
-    print(f"  Noise σ: {model_config['cmb_noise_std']}")
+    model_config["cmb_z_source"] = float(cmb_cfg.get("z_source", 1100.0))
+    model_config["cmb_noise_arcmin"] = float(cmb_cfg.get("noise_arcmin", 1.0))
+
+    print("  Field: Auto (will match box size) × Auto (will match mesh) px")
+    print(f"  z_source: {model_config['cmb_z_source']}")
+    print(f"  Noise (1'): {model_config['cmb_noise_arcmin']}")
 
     # --- Validation: Lensing Kernel Coverage ---
     print("\nComputing lensing efficiency...")
@@ -234,8 +235,9 @@ if cmb_enabled and "kappa_obs" in truth:
     from scipy.ndimage import map_coordinates
 
     # Project galaxy field onto CMB angular coordinates (same as convergence_Born)
-    field_size_deg = model_config["cmb_field_size_deg"]
-    field_npix = model_config["cmb_field_npix"]
+    # Retrieve calculated field size from the model instance
+    field_size_deg = model.cmb_field_size_deg
+    field_npix = model.cmb_field_npix
     box_size = model_config["box_shape"][0]
     mesh_shape_val = model_config["mesh_shape"][0]
 

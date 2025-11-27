@@ -60,9 +60,9 @@ default_config = {
     # CMB lensing parameters
     "cmb_enabled": False,  # Enable CMB lensing in forward model and likelihood
     "cmb_lensing_obs": None,  # Observed convergence map (set during conditioning)
-    "cmb_noise_std": 0.01,  # CMB convergence noise std
-    "cmb_field_size_deg": 5.0,  # Angular field size in degrees
-    "cmb_field_npix": 64,  # Number of pixels for convergence map
+    "cmb_noise_arcmin": 1.0,  # Effective noise normalized to 1 arcmin scale
+    "cmb_field_size_deg": None,  # Angular field size in degrees (None = auto-calc from box size)
+    "cmb_field_npix": None,  # Number of pixels for convergence map (None = match mesh_shape)
     "cmb_z_source": 1100.0,  # CMB last scattering surface
     # Latents
     "precond": "kaiser_dyn",  # direct, fourier, kaiser, kaiser_dyn
@@ -351,9 +351,9 @@ class FieldLevelModel(Model):
     poles: tuple = field(default=default_config["poles"])
     # CMB lensing (with defaults for backward compatibility)
     cmb_lensing_obs: np.ndarray | None = field(default=default_config["cmb_lensing_obs"])
-    cmb_noise_std: float = field(default=default_config["cmb_noise_std"])
-    cmb_field_size_deg: float = field(default=default_config["cmb_field_size_deg"])
-    cmb_field_npix: int = field(default=default_config["cmb_field_npix"])
+    cmb_noise_arcmin: float = field(default=default_config["cmb_noise_arcmin"])
+    cmb_field_size_deg: float | None = field(default=default_config["cmb_field_size_deg"])
+    cmb_field_npix: int | None = field(default=default_config["cmb_field_npix"])
     cmb_z_source: float = field(default=default_config["cmb_z_source"])
     cmb_enabled: bool = field(default=False)  # Explicit flag to enable CMB lensing
     # Latents (required, from default_config)
@@ -379,6 +379,32 @@ class FieldLevelModel(Model):
         self.k_nyquist = np.pi * np.min(self.mesh_shape / self.box_shape)
         # 2*pi factors because of Fourier transform definition
         self.gxy_count = self.gxy_density * self.cell_shape.prod()
+
+        # CMB Lensing Field Size Calculation
+        if self.cmb_enabled:
+            if self.cmb_field_size_deg is None:
+                # Calculate box angular size: theta = L / chi
+                # We use the transverse box size (box_shape[0])
+                chi_obs = jc.background.radial_comoving_distance(get_cosmology(**self.loc_fid), jnp.atleast_1d(self.a_obs))[0]
+                self.cmb_field_size_deg = float(self.box_shape[0] / chi_obs * (180.0 / np.pi))
+                print(f"CMB Field Size (Auto): {self.cmb_field_size_deg:.2f} deg (matched to box size)")
+
+            if self.cmb_field_npix is None:
+                self.cmb_field_npix = int(self.mesh_shape[0])
+                print(f"CMB Field Pixels (Auto): {self.cmb_field_npix} (matched to mesh shape)")
+
+            # Calculate pixel scale in arcmin
+            pixel_scale_deg = self.cmb_field_size_deg / self.cmb_field_npix
+            pixel_scale_arcmin = pixel_scale_deg * 60.0
+
+            # Scale noise: sigma_pix = sigma_1' / theta_pix_arcmin
+            # (Assuming white noise power spectrum level)
+            self.cmb_noise_std = self.cmb_noise_arcmin / pixel_scale_arcmin
+
+            print("CMB Noise Model (Physical):")
+            print(f"  Input noise (1'): {self.cmb_noise_arcmin:.4f}")
+            print(f"  Pixel scale:      {pixel_scale_arcmin:.4f} arcmin")
+            print(f"  Computed sigma:   {self.cmb_noise_std:.6f}")
 
     def __str__(self):
         out = ""
