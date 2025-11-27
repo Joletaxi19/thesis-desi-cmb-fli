@@ -64,7 +64,7 @@ Interactive demonstrations and tutorials for the DESI × CMB lensing field-level
 - Parameter recovery validation
 - Visualizations: trace plots, posterior distributions, corner plots
 
-**Note:** For production runs, use the optimized script `scripts/04_field_level_inference.py`. See "Running Notebooks" above for details.
+**Note:** To run this analysis (field-level inference without CMB lensing), use `scripts/05_cmb_lensing.py` with `cmb_enabled: false` in the configuration. See "Running Notebooks" above for details.
 
 ---
 
