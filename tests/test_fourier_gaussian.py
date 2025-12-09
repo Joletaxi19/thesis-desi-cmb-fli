@@ -1,10 +1,18 @@
 
+import os
+
 import jax
 import jax.numpy as jnp
+import pytest
 from numpyro.handlers import seed, trace
 
 from desi_cmb_fli.model import FieldLevelModel, FourierSpaceGaussian, default_config
 
+# Skip all tests in this file if not on NERSC
+pytestmark = pytest.mark.skipif(
+    not os.path.exists("/global/cfs/cdirs/cmb/data/planck2020/PR4_lensing/PR4_nlkk_p.dat"),
+    reason="Planck data only available on NERSC",
+)
 
 def test_fourier_gaussian():
     print("Testing FourierSpaceGaussian...")
