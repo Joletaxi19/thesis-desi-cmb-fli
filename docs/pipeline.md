@@ -108,7 +108,7 @@ Computation of convergence κ from matter fields using Born approximation.
 > [!IMPORTANT]
 > **Original Contribution:** All subsequent sections (Step 6 onwards) represent original developments and contributions implemented specifically for this thesis project.
 
-## 6. Joint Field-Level Inference ✅ (November 2025)
+## 6. Joint Field-Level Inference 🚧 (ongoing)
 
 Joint inference on synthetic galaxy + CMB lensing data.
 
@@ -127,12 +127,12 @@ Joint inference on synthetic galaxy + CMB lensing data.
 
 **Validation:** `scripts/check_box_size_impact.py` allows verifying the impact of box size on the lensing kernel coverage, in function of the redshift of observation.
 
+**Next step:** Inform the model of the missing lensing signal through a noise spectrum that accounts for the missing signal.
+
 ---
 
 ## Next Steps
 
-1. **Inform the model of the missing lensing signal through a noise spectrum that accounts for the missing signal.**
-
-2. **Field-level inference on real data** - Application to DESI LRG × Planck/ACT κ-maps
+1. **Field-level inference on real data** - Application to DESI LRG × Planck/ACT κ-maps
 
 Implementation details will be documented as development progresses.
