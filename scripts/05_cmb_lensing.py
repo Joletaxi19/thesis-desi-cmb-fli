@@ -161,6 +161,74 @@ if model.cmb_enabled and model.cmb_noise_nell is not None:
     except Exception as e:
         print(f"⚠️  Could not plot N_ell: {e}")
 
+    # Plot Noise Scaling Analysis (Closure Test)
+    if model_config.get("use_reduced_noise_for_closure_test", False) and hasattr(model, "noise_scaling_details"):
+        print("\nPlotting Reduced Noise Analysis...")
+        try:
+            details = model.noise_scaling_details
+            ell_k = details["ell"]
+            cl_box = details["cl_box"]
+            cl_theory = details["cl_theory"]
+            ratio = details["ratio_1d"]
+
+            fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+
+            # 1. Power Spectra
+            ax = axes[0, 0]
+            ax.loglog(ell_k, cl_theory, label=r"Theory $C_\ell^{\kappa\kappa}$")
+            ax.loglog(ell_k, cl_box, '--', label=r"Box $C_\ell^{\kappa\kappa}$")
+            ax.axvline(ell_k[-1], color='k', ls=':', label=r"$\ell_{max}$")
+            ax.set_title("Signal Power Spectra")
+            ax.set_xlabel(r"$\ell$")
+            ax.legend()
+            ax.grid(True, alpha=0.3)
+
+            # 2. Ratio
+            ax = axes[0, 1]
+            ax.semilogx(ell_k, ratio, label=r"$R_\ell = C_\ell^{box} / C_\ell^{theory}$")
+            ax.axhline(1.0, color='gray', ls='--')
+            ax.set_title("Signal Capture Ratio")
+            ax.set_xlabel(r"$\ell$")
+            ax.set_ylim(-0.1, 1.1)
+            ax.legend()
+            ax.grid(True, alpha=0.3)
+
+            # 3. Effective Noise vs Input
+            # N_ell_eff = N_ell_input * Ratio
+            ax = axes[1, 0]
+            ax.loglog(ell_in[mask], nell_in[mask], label=r"Input $N_\ell$", color='gray', alpha=0.5)
+            # Interpolate input N_ell to ell_k
+            nell_interp = np.exp(np.interp(np.log(ell_k), np.log(ell_in[mask]), np.log(nell_in[mask])))
+            nell_eff = nell_interp * ratio
+            nell_eff = np.clip(nell_eff, 1e-30, None)
+
+            ax.loglog(ell_k, nell_eff, label=r"Effective $N_\ell$ (Scaled)")
+            ax.set_title("Effective Noise Power")
+            ax.set_xlabel(r"$\ell$")
+            ax.legend()
+            ax.grid(True, alpha=0.3)
+
+            # 4. SNR
+            ax = axes[1, 1]
+            # SNR^2 per mode approx C_l / N_l
+            snr_theory = cl_theory / nell_interp
+            snr_box = cl_box / nell_eff
+
+            ax.loglog(ell_k, snr_theory, label=r"Theory SNR ($C_\ell/N_\ell$)")
+            ax.loglog(ell_k, snr_box, '--', label=r"Scaled SNR ($C_\ell^{box}/N_\ell^{eff}$)")
+            ax.set_title("Signal-to-Noise Ratio (per mode)")
+            ax.set_xlabel(r"$\ell$")
+            ax.legend()
+            ax.grid(True, alpha=0.3)
+
+            plt.tight_layout()
+            plt.savefig(fig_dir / "noise_scaling_analysis.png", dpi=150)
+            plt.close()
+            print(f"✓ Noise scaling plot: {fig_dir / 'noise_scaling_analysis.png'}")
+
+        except Exception as e:
+            print(f"⚠️  Could not plot noise analysis: {e}")
+
 
 # Generate truth
 print("\n" + "=" * 80)

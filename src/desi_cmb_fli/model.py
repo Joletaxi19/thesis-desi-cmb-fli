@@ -554,13 +554,16 @@ class FieldLevelModel(Model):
         # We need the fiducial cosmology
         cosmo_fid = get_cosmology(**self.loc_fid)
 
-        ratio_2d = compute_signal_capture_ratio(
+        ratio_2d, details = compute_signal_capture_ratio(
             cosmo_fid,
             kappa_box,
             self.cmb_field_size_deg,
             self.cmb_field_npix,
-            self.cmb_z_source
+            self.cmb_z_source,
+            return_details=True
         )
+
+        self.noise_scaling_details = details
 
         return ratio_2d
 

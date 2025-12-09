@@ -169,7 +169,7 @@ def density_field_to_convergence(density_field,
     return kappa
 
 
-def compute_signal_capture_ratio(cosmo, kappa_map, field_size_deg, npix, z_source):
+def compute_signal_capture_ratio(cosmo, kappa_map, field_size_deg, npix, z_source, return_details=False):
     """
     Compute the ratio R_ell = C_ell^box / C_ell^total robustly.
     Handles small fields of view by adapting bin sizes.
@@ -193,7 +193,7 @@ def compute_signal_capture_ratio(cosmo, kappa_map, field_size_deg, npix, z_sourc
     lx, ly = np.meshgrid(ell_freq, ell_freq, indexing='ij')
     ell_grid = np.sqrt(lx**2 + ly**2)
 
-    # 3. ROBUST BINNING (The Fix)
+    # 3. Binning
     # We ensure bins are at least as wide as delta_ell to avoid empty bins
     # and "aliasing" in the 1D estimation.
     bin_width = max(50.0, delta_ell * 1.1)
@@ -204,7 +204,6 @@ def compute_signal_capture_ratio(cosmo, kappa_map, field_size_deg, npix, z_sourc
     dig = np.digitize(ell_grid.flatten(), ell_edges)
     mask = (dig > 0) & (dig < len(ell_edges))
 
-    # ell_flat = ell_grid.flatten() # Unused
     P_flat = P_k_2d.flatten()
 
     bin_counts = np.bincount(dig[mask], minlength=len(ell_edges))
@@ -218,10 +217,6 @@ def compute_signal_capture_ratio(cosmo, kappa_map, field_size_deg, npix, z_sourc
 
     # Filter valid bins
     valid = (bin_counts[1:] > 0) & np.isfinite(C_ell_box_1d[1:])
-    # Note: bin_counts[0] corresponds to values below ell_edges[0]=0, usually empty or DC
-    # The output of bincount has length len(ell_edges).
-    # Index i in bincount corresponds to bin i (digitize output).
-    # Since we masked dig > 0, we look at indices 1 to end.
 
     # Align arrays
     C_ell_box_1d = C_ell_box_1d[1:]
@@ -237,7 +232,7 @@ def compute_signal_capture_ratio(cosmo, kappa_map, field_size_deg, npix, z_sourc
     cl_theory = jc.angular_cl.angular_cl(cosmo, current_bin_centers, [probe])
     cl_theory = jnp.squeeze(cl_theory)
 
-    # 5. Compute Ratio in 1D first (More stable)
+    # 5. Compute Ratio in 1D first
     # Ratio at bin centers
     ratio_1d = C_ell_box_1d / cl_theory
 
@@ -248,6 +243,15 @@ def compute_signal_capture_ratio(cosmo, kappa_map, field_size_deg, npix, z_sourc
     ratio_2d = ratio_2d.reshape(npix, npix)
 
     # Cap
-    ratio_2d = np.clip(ratio_2d, 0, 1.0)
+    ratio_2d = np.clip(ratio_2d, 1e-8, 1.0)
+
+    if return_details:
+        details = {
+            "ell": current_bin_centers,
+            "cl_box": C_ell_box_1d,
+            "cl_theory": cl_theory,
+            "ratio_1d": ratio_1d
+        }
+        return ratio_2d, details
 
     return ratio_2d
