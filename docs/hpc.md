@@ -66,3 +66,4 @@ python -c "import jax; print(jax.devices())"  # Should show [CudaDevice(id=0), .
 ## Storage
 
 - **DESI DR1 catalogs**: `/global/cfs/cdirs/desi/public/dr1/survey/catalogs/dr1/LSS/iron/LSScats/v1.5`
+- **Planck PR4 Lensing Noise ($N_\ell$)**: `/global/cfs/cdirs/cmb/data/planck2020/PR4_lensing/PR4_nlkk_p.dat`

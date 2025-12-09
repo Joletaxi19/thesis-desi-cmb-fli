@@ -18,3 +18,6 @@ notebooks/FLI_introduction.ipynb
 
 # VSCode settings
 .vscode/
+
+# Configs
+configs/05_cmb_lensing/submitted

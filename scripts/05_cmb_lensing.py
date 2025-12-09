@@ -24,6 +24,7 @@ from pathlib import Path
 import jax
 import jax.numpy as jnp
 import jax.random as jr
+import jax_cosmo as jc
 import matplotlib.pyplot as plt
 import numpy as np
 import numpyro
@@ -31,6 +32,7 @@ import yaml
 from blackjax.adaptation.mclmc_adaptation import MCLMCAdaptationState
 from jax import jit, pmap, tree
 
+from desi_cmb_fli.bricks import get_cosmology
 from desi_cmb_fli.chains import Chains
 from desi_cmb_fli.model import FieldLevelModel, default_config
 from desi_cmb_fli.samplers import get_mclmc_run, get_mclmc_warmup
@@ -93,57 +95,29 @@ if cmb_enabled:
     model_config["cmb_field_npix"] = int(cmb_cfg["field_npix"]) if "field_npix" in cmb_cfg else None
 
     model_config["cmb_z_source"] = float(cmb_cfg.get("z_source", 1100.0))
-    model_config["cmb_noise_arcmin"] = float(cmb_cfg.get("noise_arcmin", 1.0))
+    model_config["cmb_z_source"] = float(cmb_cfg.get("z_source", 1100.0))
 
-    print("  Field: Auto (will match box size) × Auto (will match mesh) px")
+    # Update for new noise model (N_ell)
+    if "cmb_noise_nell" in cmb_cfg:
+        model_config["cmb_noise_nell"] = cmb_cfg["cmb_noise_nell"]
+        print(f"  Noise: Using N_ell from {model_config['cmb_noise_nell']}")
+    else:
+        # Fallback or error if not provided (since we removed default arcmin noise)
+        raise ValueError("cmb_noise_nell must be provided in config when cmb_enabled=True")
+
+    # Check for closure test flag (optional)
+    if cmb_cfg.get("use_reduced_noise_for_closure_test", False):
+        print("  ! Configuring for Closure Test: enable signal-matched noise reduction")
+        model_config["use_reduced_noise_for_closure_test"] = True
+
     print(f"  z_source: {model_config['cmb_z_source']}")
-    print(f"  Noise (1'): {model_config['cmb_noise_arcmin']}")
+
+    print(f"  z_source: {model_config['cmb_z_source']}")
 
     # --- Validation: Lensing Kernel Coverage ---
-    print("\nComputing lensing efficiency...")
-    from desi_cmb_fli.bricks import get_cosmology
-    from desi_cmb_fli.cmb_lensing import compute_lensing_efficiency
+    # NOTE: compute_lensing_efficiency is deprecated
+    # The noise matching is now handled automatically in the model if use_reduced_noise_for_closure_test is set.
 
-    # Create a temporary cosmology object for calculation
-    # We use truth params or defaults if not available
-    truth_params_val = cfg.get("truth_params", {})
-    cosmo_val = get_cosmology(
-        Omega_m=truth_params_val.get("Omega_m", 0.3),
-        sigma8=truth_params_val.get("sigma8", 0.8),
-        b1=1.0, b2=0.0, bs2=0.0, bn2=0.0 # Bias doesn't matter for distance
-    )
-
-    # Calculate box center chi based on a_obs
-    import jax.numpy as jnp
-    import jax_cosmo as jc
-    chi_center_val = jc.background.radial_comoving_distance(cosmo_val, jnp.atleast_1d(model_config["a_obs"]))[0]
-    chi_center_val = float(chi_center_val)
-    box_size_z = model_config["box_shape"][2]
-
-    z_grid, kernel, fraction, box_mask = compute_lensing_efficiency(
-        cosmo_val,
-        model_config["cmb_z_source"],
-        chi_center_val,
-        box_size_z
-    )
-
-    print(f"  Box center: z ~ {1.0/model_config['a_obs'] - 1.0:.2f} (chi = {chi_center_val:.1f} Mpc/h)")
-    print(f"  Box coverage: {fraction*100:.2f}% of the lensing kernel")
-
-    # Plot kernel and box coverage
-    plt.figure(figsize=(8, 5))
-    # Use semilogy for better visibility of the kernel structure
-    plt.semilogy(z_grid, kernel, label=r"$W^\kappa(z)$")
-    plt.fill_between(z_grid, 1e-10, kernel, where=box_mask, alpha=0.3, color="green", label=f"Box ({fraction:.1%})")
-    plt.xlabel("Redshift z")
-    plt.ylabel(r"$W^\kappa(z)$")
-    plt.title(f"CMB Lensing Kernel Coverage (Box center z={1/model_config['a_obs']-1:.2f})")
-    plt.legend()
-    plt.grid(True, alpha=0.3, which="both", ls="-")
-    plt.ylim(bottom=1e-5 * np.max(kernel)) # Set reasonable bottom limit
-    plt.savefig(fig_dir / "lensing_kernel_coverage.png", dpi=150)
-    plt.close()
-    print(f"✓ Lensing coverage plot: {fig_dir / 'lensing_kernel_coverage.png'}")
     # -------------------------------------------
 
 else:
@@ -153,6 +127,40 @@ else:
 model = FieldLevelModel(**model_config)
 print(model)
 model.save(config_dir / "model.yaml")
+
+# Plot N_ell if CMB is enabled
+if model.cmb_enabled and model.cmb_noise_nell is not None:
+    print("\nPlotting CMB noise spectrum...")
+    try:
+        if isinstance(model.cmb_noise_nell, str):
+            data = np.loadtxt(model.cmb_noise_nell)
+            if data.ndim == 1:
+                ell_in = np.arange(len(data))
+                nell_in = data
+            else:
+                ell_in, nell_in = data[:, 0], data[:, 1]
+        elif isinstance(model.cmb_noise_nell, dict):
+            ell_in, nell_in = model.cmb_noise_nell["ell"], model.cmb_noise_nell["N_ell"]
+        else:
+            # Tuple or list
+            ell_in, nell_in = model.cmb_noise_nell[0], model.cmb_noise_nell[1]
+
+        # Filter for log plot
+        mask = (ell_in > 0) & (nell_in > 0)
+
+        plt.figure(figsize=(8, 6))
+        plt.loglog(ell_in[mask], nell_in[mask], label="Input $N_\\ell$")
+        plt.xlabel(r"$\ell$")
+        plt.ylabel(r"$N_\ell$")
+        plt.title("CMB Lensing Noise Power Spectrum")
+        plt.grid(True, which="both", ls="-", alpha=0.5)
+        plt.legend()
+        plt.savefig(fig_dir / "cmb_noise_spectrum.png", dpi=150)
+        plt.close()
+        print(f"✓ CMB noise plot: {fig_dir / 'cmb_noise_spectrum.png'}")
+    except Exception as e:
+        print(f"⚠️  Could not plot N_ell: {e}")
+
 
 # Generate truth
 print("\n" + "=" * 80)
@@ -252,6 +260,7 @@ if cmb_enabled and "kappa_obs" in truth:
 
     # Recalculate box center for validation (same as in model)
     # Use the same cosmology as truth generation
+    cosmo_val = get_cosmology(**truth_params)
     chi_center_val = jc.background.radial_comoving_distance(cosmo_val, jnp.atleast_1d(model_config["a_obs"]))[0]
     chi_center_val = float(chi_center_val)
 

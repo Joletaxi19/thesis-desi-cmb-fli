@@ -169,68 +169,85 @@ def density_field_to_convergence(density_field,
     return kappa
 
 
-def compute_lensing_efficiency(cosmo, z_source, box_center_chi, box_size_z):
+def compute_signal_capture_ratio(cosmo, kappa_map, field_size_deg, npix, z_source):
     """
-    Compute the fraction of the CMB lensing kernel captured by the simulation box.
-
-    Parameters
-    ----------
-    cosmo : jax_cosmo.Cosmology
-    z_source : float
-        Source redshift
-    box_center_chi : float
-        Comoving distance to the center of the box (Mpc/h)
-    box_size_z : float
-        Size of the box along the line of sight (Mpc/h)
-
-    Returns
-    -------
-    z_grid : array
-        Redshift grid
-    kernel : array
-        Lensing kernel W_kappa(z)
-    fraction : float
-        Fraction of the integral captured by the box
-    box_mask : array
-        Boolean mask indicating the box region
+    Compute the ratio R_ell = C_ell^box / C_ell^total robustly.
+    Handles small fields of view by adapting bin sizes.
     """
+    import jax.numpy as jnp
+    import jax_cosmo as jc
     import numpy as np
 
-    # Create a fine grid of redshifts
-    z_grid = np.linspace(0, z_source, 10000)
+    # 1. Setup Geometry
+    field_size_rad = field_size_deg * np.pi / 180.
 
-    # Compute comoving distance
-    chi_grid = jax.device_get(jc.background.radial_comoving_distance(cosmo, 1/(1+z_grid)))
-    chi_source = jax.device_get(jc.background.radial_comoving_distance(cosmo, 1/(1+z_source)))
+    # Fundamental frequency (separation between Fourier modes)
+    delta_ell = 2 * np.pi / field_size_rad
 
-    # Compute lensing kernel W_kappa
-    a_grid = 1.0 / (1.0 + z_grid)
-    kernel_chi = (chi_grid / a_grid) * (chi_source - chi_grid) / chi_source
-    kernel_chi = np.clip(kernel_chi, 0, None) # Ensure non-negative
+    # 2. Compute 2D Power Spectrum of the Box
+    kappa_k = np.fft.fftn(kappa_map)
+    P_k_2d = np.abs(kappa_k)**2 * (field_size_rad**2 / npix**4)
 
-    # H_grid = jax.device_get(jc.background.H(cosmo, a_grid))
-    dchi_dz = np.gradient(chi_grid, z_grid)
-    kernel_z = kernel_chi * dchi_dz
+    # Grid of ell values
+    ell_freq = np.fft.fftfreq(npix, d=field_size_rad/npix) * 2 * np.pi
+    lx, ly = np.meshgrid(ell_freq, ell_freq, indexing='ij')
+    ell_grid = np.sqrt(lx**2 + ly**2)
 
-    # Define box boundaries
-    box_start = box_center_chi - box_size_z / 2.0
-    box_end = box_center_chi + box_size_z / 2.0
+    # 3. ROBUST BINNING (The Fix)
+    # We ensure bins are at least as wide as delta_ell to avoid empty bins
+    # and "aliasing" in the 1D estimation.
+    bin_width = max(50.0, delta_ell * 1.1)
+    ell_max = ell_grid.max()
+    ell_edges = np.arange(0, ell_max + bin_width, bin_width)
 
-    # Mask for the box
-    box_mask = (chi_grid >= box_start) & (chi_grid <= box_end)
+    # Binning logic
+    dig = np.digitize(ell_grid.flatten(), ell_edges)
+    mask = (dig > 0) & (dig < len(ell_edges))
 
-    # Integrate
-    total_integral = np.trapz(kernel_z, z_grid)
+    # ell_flat = ell_grid.flatten() # Unused
+    P_flat = P_k_2d.flatten()
 
-    if total_integral <= 0:
-        return z_grid, kernel_z, 0.0, box_mask
+    bin_counts = np.bincount(dig[mask], minlength=len(ell_edges))
+    bin_sums = np.bincount(dig[mask], weights=P_flat[mask], minlength=len(ell_edges))
 
-    # Integral within box
-    kernel_in_box = kernel_z.copy()
-    kernel_in_box[~box_mask] = 0.0
+    # Avoid division by zero
+    with np.errstate(divide='ignore', invalid='ignore'):
+        C_ell_box_1d = bin_sums / bin_counts
 
-    box_integral = np.trapz(kernel_in_box, z_grid)
+    bin_centers = 0.5 * (ell_edges[1:] + ell_edges[:-1])
 
-    fraction = box_integral / total_integral
+    # Filter valid bins
+    valid = (bin_counts[1:] > 0) & np.isfinite(C_ell_box_1d[1:])
+    # Note: bin_counts[0] corresponds to values below ell_edges[0]=0, usually empty or DC
+    # The output of bincount has length len(ell_edges).
+    # Index i in bincount corresponds to bin i (digitize output).
+    # Since we masked dig > 0, we look at indices 1 to end.
 
-    return z_grid, kernel_z, fraction, box_mask
+    # Align arrays
+    C_ell_box_1d = C_ell_box_1d[1:]
+    current_bin_centers = bin_centers
+
+    # Apply validity mask
+    C_ell_box_1d = C_ell_box_1d[valid]
+    current_bin_centers = current_bin_centers[valid]
+
+    # 4. Theory C_ell
+    # We calculate theory at the exact bin centers to minimize interpolation errors
+    probe = jc.probes.WeakLensing([jc.redshift.delta_nz(z_source)], sigma_e=0)
+    cl_theory = jc.angular_cl.angular_cl(cosmo, current_bin_centers, [probe])
+    cl_theory = jnp.squeeze(cl_theory)
+
+    # 5. Compute Ratio in 1D first (More stable)
+    # Ratio at bin centers
+    ratio_1d = C_ell_box_1d / cl_theory
+
+    # 6. Interpolate Ratio to 2D
+    # Using 'nearest' or linear extrapolation for low-ell is safer than left=0
+    # because the ratio should be roughly constant at low ell (scale independent growth)
+    ratio_2d = np.interp(ell_grid.flatten(), current_bin_centers, ratio_1d, left=ratio_1d[0], right=0)
+    ratio_2d = ratio_2d.reshape(npix, npix)
+
+    # Cap
+    ratio_2d = np.clip(ratio_2d, 0, 1.0)
+
+    return ratio_2d

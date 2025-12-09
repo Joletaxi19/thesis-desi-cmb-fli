@@ -103,6 +103,11 @@ Computation of convergence κ from matter fields using Born approximation.
 - Lensing kernel integration
 - Projection of density fields to convergence maps
 
+---
+
+> [!IMPORTANT]
+> **Original Contribution:** All subsequent sections (Step 6 onwards) represent original developments and contributions implemented specifically for this thesis project.
+
 ## 6. Joint Field-Level Inference ✅ (November 2025)
 
 Joint inference on synthetic galaxy + CMB lensing data.
@@ -112,9 +117,19 @@ Joint inference on synthetic galaxy + CMB lensing data.
 - Joint likelihood: $P(\delta_g, \kappa | \delta_{ini}, \theta)$
 - Constrains cosmology from both tracers
 - Validated with cross-correlations
+- **Realistic Lensing Noise:**
+  - Uses the true Planck lensing noise spectrum ($N_\ell^{\kappa\kappa}$) from PR4.
+  - Includes an option to **rescale the noise** to achieve a Signal-to-Noise Ratio (SNR) representative of the true data, accounting for the fact that the simulation covers only a small portion of the line of sight (for validation purposes).
+  - This is handled by `compute_signal_capture_ratio` in `cmb_lensing.py`.
+- **Automatic Field Size:** The angular size of the field is automatically calculated based on the physical box size and the observation redshift, ensuring the correct geometry for the lensing kernel.
+- **Validation:** `scripts/check_box_size_impact.py` allows verifying the impact of box size on the lensing kernel coverage, in function of the redshift of observation.
+
+---
 
 ## Next Steps
 
-1. **Field-level inference on real data** - Application to DESI LRG × Planck/ACT κ-maps
+1. **Inform the model of the missing lensing signal through a noise spectrum that accounts for the missing signal.**
+
+2. **Field-level inference on real data** - Application to DESI LRG × Planck/ACT κ-maps
 
 Implementation details will be documented as development progresses.

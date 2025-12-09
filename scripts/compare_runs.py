@@ -64,7 +64,7 @@ def load_and_process(run_dir, label):
         model_config["cmb_field_size_deg"] = float(cmb_cfg.get("field_size_deg", 5.0))
         model_config["cmb_field_npix"] = int(cmb_cfg.get("field_npix", 64))
         model_config["cmb_z_source"] = float(cmb_cfg.get("z_source", 1100.0))
-        model_config["cmb_noise_std"] = float(cmb_cfg.get("noise_std", 0.01))
+        model_config["cmb_noise_nell"] = cmb_cfg.get("cmb_noise_nell")
 
     model = FieldLevelModel(**model_config)
 

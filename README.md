@@ -41,7 +41,7 @@ Git hooks automatically format code on commit. CI runs tests on push.
 **🚧 Next Steps:**
 - Field-level inference on real data (DESI LRG × Planck/ACT κ-maps)
 
-See [`pipeline.md`](pipeline.md) for detailed implementation roadmap and [`notebooks/`](notebooks/) for interactive demonstrations.
+See [`pipeline.md`](https://github.com/Joletaxi19/thesis-desi-cmb-fli/blob/main/docs/pipeline.md) for detailed implementation roadmap and [`notebooks/`](notebooks/) for interactive demonstrations.
 
 ## Citation
 The project for the FLI × DESI × CMB lensing analysis should be cited

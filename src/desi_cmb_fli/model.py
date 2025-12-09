@@ -60,10 +60,12 @@ default_config = {
     # CMB lensing parameters
     "cmb_enabled": False,  # Enable CMB lensing in forward model and likelihood
     "cmb_lensing_obs": None,  # Observed convergence map (set during conditioning)
-    "cmb_noise_arcmin": 1.0,  # Effective noise normalized to 1 arcmin scale
+    "cmb_noise_nell": None,  # Path to N_ell file or dictionary {'ell': ..., 'N_ell': ...}
     "cmb_field_size_deg": None,  # Angular field size in degrees (None = auto-calc from box size)
     "cmb_field_npix": None,  # Number of pixels for convergence map (None = match mesh_shape)
+
     "cmb_z_source": 1100.0,  # CMB last scattering surface
+    "use_reduced_noise_for_closure_test": False, # Enable reduced noise for closure test
     # Latents
     "precond": "kaiser_dyn",  # direct, fourier, kaiser, kaiser_dyn
     "latents": {
@@ -285,6 +287,49 @@ class Model:
 
 
 @dataclass
+class FourierSpaceGaussian(dist.Distribution):
+    arg_constraints = {"loc": dist.constraints.real, "var_k": dist.constraints.positive}
+    support = dist.constraints.real
+
+    def __init__(self, loc, var_k, validate_args=None):
+        self.loc = loc
+        self.var_k = var_k
+        super().__init__(batch_shape=(), event_shape=loc.shape, validate_args=validate_args)
+
+    def sample(self, key, sample_shape=()):
+        # Generate white noise in real space
+        shape = sample_shape + self.event_shape
+        eps = jr.normal(key, shape=shape)
+
+        # FFT
+        # Assuming last 2 dims are spatial (2D field)
+        eps_k = jnp.fft.fftn(eps, axes=(-2, -1))
+
+        # Scale: sqrt(var_k) / N
+        # var_k is (N, N)
+        N = self.event_shape[0]
+        scale = jnp.sqrt(self.var_k) / N
+
+        noise_k = eps_k * scale
+
+        # Zero out the DC mode (mean) to avoid huge offsets if var_k[0,0] is large
+        noise_k = noise_k.at[..., 0, 0].set(0.0)
+
+        # IFFT
+        noise = jnp.fft.ifftn(noise_k, axes=(-2, -1)).real
+
+        return self.loc + noise
+
+    def log_prob(self, value):
+        diff = value - self.loc
+        diff_k = jnp.fft.fftn(diff, axes=(-2, -1))
+
+        # Log likelihood
+        # -0.5 * sum(|diff_k|^2 / var_k)
+        return -0.5 * jnp.sum(jnp.abs(diff_k)**2 / self.var_k, axis=(-2, -1))
+
+
+@dataclass
 class FieldLevelModel(Model):
     """
     Field-level cosmological model,
@@ -351,11 +396,12 @@ class FieldLevelModel(Model):
     poles: tuple = field(default=default_config["poles"])
     # CMB lensing (with defaults for backward compatibility)
     cmb_lensing_obs: np.ndarray | None = field(default=default_config["cmb_lensing_obs"])
-    cmb_noise_arcmin: float = field(default=default_config["cmb_noise_arcmin"])
+    cmb_noise_nell: str | dict | None = field(default=default_config["cmb_noise_nell"])
     cmb_field_size_deg: float | None = field(default=default_config["cmb_field_size_deg"])
     cmb_field_npix: int | None = field(default=default_config["cmb_field_npix"])
     cmb_z_source: float = field(default=default_config["cmb_z_source"])
     cmb_enabled: bool = field(default=False)  # Explicit flag to enable CMB lensing
+    use_reduced_noise_for_closure_test: bool = field(default=False)
     # Latents (required, from default_config)
     precond: str = field(default=default_config["precond"])
     latents: dict = field(default_factory=lambda: default_config["latents"])
@@ -395,16 +441,78 @@ class FieldLevelModel(Model):
 
             # Calculate pixel scale in arcmin
             pixel_scale_deg = self.cmb_field_size_deg / self.cmb_field_npix
-            pixel_scale_arcmin = pixel_scale_deg * 60.0
 
-            # Scale noise: sigma_pix = sigma_1' / theta_pix_arcmin
-            # (Assuming white noise power spectrum level)
-            self.cmb_noise_std = self.cmb_noise_arcmin / pixel_scale_arcmin
 
-            print("CMB Noise Model (Physical):")
-            print(f"  Input noise (1'): {self.cmb_noise_arcmin:.4f}")
-            print(f"  Pixel scale:      {pixel_scale_arcmin:.4f} arcmin")
-            print(f"  Computed sigma:   {self.cmb_noise_std:.6f}")
+            # Load and interpolate N_ell
+            if self.cmb_noise_nell is None:
+                raise ValueError("cmb_noise_nell is required when cmb_enabled=True")
+
+            if isinstance(self.cmb_noise_nell, str):
+                # Load data
+                data = np.loadtxt(self.cmb_noise_nell)
+                if data.ndim == 1:
+                    # Assume 1D array where index is ell
+                    nell_in = data
+                    ell_in = np.arange(len(data))
+                else:
+                    # Assume file with columns [ell, N_ell]
+                    ell_in, nell_in = data[:, 0], data[:, 1]
+            elif isinstance(self.cmb_noise_nell, dict):
+                ell_in, nell_in = self.cmb_noise_nell["ell"], self.cmb_noise_nell["N_ell"]
+            else:
+                # Assume it's a tuple or list of arrays
+                ell_in, nell_in = self.cmb_noise_nell[0], self.cmb_noise_nell[1]
+
+            # Compute 2D ell grid for the map
+            # Frequencies in cycles per degree
+            # Use full FFT frequencies to support fftn
+            freq_x = np.fft.fftfreq(self.cmb_field_npix, d=pixel_scale_deg) * 360.0
+            freq_y = np.fft.fftfreq(self.cmb_field_npix, d=pixel_scale_deg) * 360.0
+
+            # Meshgrid of ell values
+            # fftn produces shape (N, N)
+            lx, ly = np.meshgrid(freq_y, freq_x, indexing='ij')
+            ell_grid = np.sqrt(lx**2 + ly**2)
+
+            # Interpolate N_ell onto the grid
+            # Use log-log interpolation for better stability with power spectra
+            # Handle ell=0 separately or clip
+            ell_in = np.asarray(ell_in)
+            nell_in = np.asarray(nell_in)
+
+            # Filter out invalid values (ell <= 0 or NaN/Inf in N_ell)
+            valid_mask = (ell_in > 0) & (np.isfinite(nell_in)) & (nell_in > 0)
+            ell_in = ell_in[valid_mask]
+            nell_in = nell_in[valid_mask]
+
+            # Avoid log(0)
+            ell_grid_safe = np.maximum(ell_grid, 1e-5)
+
+            # Interpolate in log space
+            # We assume N_ell is provided for a sufficient range
+            self.cmb_noise_power_k = np.exp(np.interp(np.log(ell_grid_safe), np.log(ell_in), np.log(nell_in)))
+
+            # Handle ell=0 (DC mode) - set noise to infinity (variance to infinity) to ignore it
+            # or set to a very large number
+            self.cmb_noise_power_k[0, 0] = 1e30
+
+            print("CMB Noise Model (N_ell):")
+            print(f"  Input N_ell shape: {ell_in.shape}")
+            print(f"  Interpolated grid shape: {self.cmb_noise_power_k.shape}")
+            print(f"  Min/Max noise power: {self.cmb_noise_power_k.min():.2e} / {self.cmb_noise_power_k.max():.2e}")
+
+            # Apply noise reduction for closure test if requested
+            if self.use_reduced_noise_for_closure_test:
+                print("\n[CLOSURE TEST] Calculating noise reduction factor...")
+                ratio_k = self._compute_noise_scaling_ratio()
+
+                # Apply ratio to noise power
+                # N_ell_eff = N_ell * ratio
+                self.cmb_noise_power_k = self.cmb_noise_power_k * ratio_k
+
+                print("[CLOSURE TEST] Applied noise reduction.")
+                print(f"  Mean reduction factor: {np.mean(ratio_k):.4f}")
+                print(f"  Min/Max reduction: {ratio_k.min():.4f} / {ratio_k.max():.4f}")
 
     def __str__(self):
         out = ""
@@ -415,7 +523,47 @@ class FieldLevelModel(Model):
         out += f"k_funda:        {self.k_funda:.5f} h/Mpc\n"
         out += f"k_nyquist:      {self.k_nyquist:.5f} h/Mpc\n"
         out += f"mean_gxy_count: {self.gxy_count:.3f} gxy/cell\n"
+        if self.use_reduced_noise_for_closure_test:
+            out += "use_reduced_noise_for_closure_test: True\n"
         return out
+
+    def _compute_noise_scaling_ratio(self):
+        """
+        Compute R_ell = C_ell^box / C_ell^total to scale noise for closure tests.
+        Returns the ratio interpolated onto the 2D Fourier grid.
+        """
+
+        print("  Generating fiducial realization for noise scaling...")
+
+        # 1. Generate a realization of the box
+        # We use a fixed seed to be deterministic within the same run configuration
+        rng = jr.key(12345)
+
+        # Generate a single sample using predict with FIDUCIAL parameters
+        # We must use fiducial cosmology to match the theoretical C_ell used in the ratio
+        prediction = self.predict(rng=rng, samples=self.loc_fid, hide_det=False, hide_samp=False, frombase=True)
+
+        if "kappa_pred" not in prediction:
+             raise RuntimeError("Could not generate kappa_pred for noise scaling. Ensure cmb_enabled=True.")
+
+        kappa_box = prediction["kappa_pred"]
+
+        # 2. Call refactored function
+        from desi_cmb_fli.cmb_lensing import compute_signal_capture_ratio
+
+        # We need the fiducial cosmology
+        cosmo_fid = get_cosmology(**self.loc_fid)
+
+        ratio_2d = compute_signal_capture_ratio(
+            cosmo_fid,
+            kappa_box,
+            self.cmb_field_size_deg,
+            self.cmb_field_npix,
+            self.cmb_z_source
+        )
+
+        return ratio_2d
+
 
     def _model(self, temp_prior=1.0, temp_lik=1.0):
         cosmo, bias, init = self.prior(temp=temp_prior)
@@ -557,8 +705,26 @@ class FieldLevelModel(Model):
 
                 kappa_pred = deterministic("kappa_pred", kappa_pred)
 
-                # CMB lensing likelihood
-                sample("kappa_obs", dist.Normal(kappa_pred, self.cmb_noise_std / jnp.sqrt(temp)))
+                # CMB lensing likelihood in Fourier space
+
+                # Variance normalization for full FFT:
+                # Var(X_k) = N_tot * sigma^2
+                # N_ell ~ sigma^2 * PixelArea
+                # Var(X_k) = N_tot * N_ell / PixelArea
+
+                field_area_sr = (self.cmb_field_size_deg * jnp.pi / 180.0)**2
+                npix2 = self.cmb_field_npix**2
+
+                variance_k = self.cmb_noise_power_k * (npix2**2 / field_area_sr)
+
+                # Apply temperature scaling to noise variance
+                # Temp > 1 means flatter distribution (larger variance)
+                # Likelihood ~ exp(-0.5 * chi2 / T) ~ exp(-0.5 * (x-mu)^2 / (var * T))
+                # So effective variance is var * T
+                variance_k = variance_k * temp
+
+                # Sample kappa_obs (or compute likelihood if observed)
+                sample("kappa_obs", FourierSpaceGaussian(kappa_pred, variance_k))
 
             return obs_mesh  # NOTE: mesh is 1+delta_obs
 

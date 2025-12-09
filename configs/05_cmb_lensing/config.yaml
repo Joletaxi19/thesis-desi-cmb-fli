@@ -3,13 +3,13 @@
 
 # SLURM configuration for NERSC Perlmutter
 slurm:
-  job_name: fli-mclmc
+  job_name: fli-N_ell-reduced_noise
   account: desi
   qos: regular
   constraint: gpu
   nodes: 1
-  gpus: 4  # Use 4 GPUs
-  time: "04:00:00"
+  gpus: 4
+  time: "08:00:00"
 
 # Model configuration
 model:
@@ -17,14 +17,15 @@ model:
   box_shape: [960.0, 960.0, 960.0]  # Mpc/h (Resolution: 15 Mpc/h)
   evolution: lpt
   lpt_order: 2
-  a_obs: 0.333
-  gxy_density: 0.001
+  a_obs: 0.571 # z = 0.75 = (0.4 + 1.1)/2 (LRG DESI range)
+  gxy_density: 0.0005 # LRG DESI gxy density
 
 # CMB lensing configuration
 cmb_lensing:
   enabled: true
   z_source: 1100.0
-  noise_arcmin: 1.0 # Effective noise normalized to 1 arcmin scale
+  cmb_noise_nell: "/global/cfs/cdirs/cmb/data/planck2020/PR4_lensing/PR4_nlkk_p.dat"
+  use_reduced_noise_for_closure_test: true
 
 # Truth parameters
 truth_params:
@@ -40,8 +41,8 @@ mcmc:
   num_warmup: 2048
 
   # Sampling
-  num_samples: 1024
-  num_batches: 40
+  num_samples: 2048
+  num_batches: 80
   num_chains: 4
 
   save_large_fields: false
@@ -52,4 +53,4 @@ mcmc:
     thinning: 1
 
 # Random seed
-seed: 42
+seed: 52
