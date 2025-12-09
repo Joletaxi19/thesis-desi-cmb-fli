@@ -114,15 +114,18 @@ Joint inference on synthetic galaxy + CMB lensing data.
 
 **Script:** `scripts/05_cmb_lensing.py`
 **Implementation:**
-- Joint likelihood: $P(\delta_g, \kappa | \delta_{ini}, \theta)$
+- Joint likelihood
 - Constrains cosmology from both tracers
 - Validated with cross-correlations
-- **Realistic Lensing Noise:**
-  - Uses the true Planck lensing noise spectrum ($N_\ell^{\kappa\kappa}$) from PR4.
-  - Includes an option to **rescale the noise** to achieve a Signal-to-Noise Ratio (SNR) representative of the true data, accounting for the fact that the simulation covers only a small portion of the line of sight (for validation purposes).
-  - This is handled by `compute_signal_capture_ratio` in `cmb_lensing.py`.
-- **Automatic Field Size:** The angular size of the field is automatically calculated based on the physical box size and the observation redshift, ensuring the correct geometry for the lensing kernel.
-- **Validation:** `scripts/check_box_size_impact.py` allows verifying the impact of box size on the lensing kernel coverage, in function of the redshift of observation.
+
+**Realistic Lensing Noise:**
+- Uses the true Planck lensing noise spectrum from PR4.
+- Includes an option to **rescale the noise** to achieve a Signal-to-Noise Ratio (SNR) representative of the true data, accounting for the fact that the simulation covers only a small portion of the line of sight (for validation purposes).
+- This is handled by `compute_signal_capture_ratio` in `cmb_lensing.py`.
+
+**Automatic Field Size:** The angular size of the field is automatically calculated based on the physical box size and the observation redshift, ensuring the correct geometry for the lensing kernel.
+
+**Validation:** `scripts/check_box_size_impact.py` allows verifying the impact of box size on the lensing kernel coverage, in function of the redshift of observation.
 
 ---
 
