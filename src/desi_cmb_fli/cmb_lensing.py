@@ -47,8 +47,8 @@ def convergence_Born(cosmo,
 
     Returns
     -------
-    convergence : array [Npix_x, Npix_y, Nz_source]
-        Convergence maps for each source redshift
+    convergence : array [Nz_source, Npix_x, Npix_y]
+        Convergence maps for each source redshift.
     """
     # Compute constant prefactor: 3/2 * Omega_m * (H0/c)^2
     constant_factor = 3 / 2 * cosmo.Omega_m * (constants.H0 / constants.c)**2
@@ -114,8 +114,9 @@ def density_field_to_convergence(density_field,
 
     Returns
     -------
-    kappa : array [field_npix, field_npix] or [field_npix, field_npix, Nz]
-        Convergence map(s)
+    kappa : array [field_npix, field_npix] or [Nz_source, field_npix, field_npix]
+        Convergence map(s). If z_source is a scalar, returns [Npix, Npix].
+        If z_source is an array, returns [Nz_source, Npix, Npix].
     """
     import numpy as np
 
@@ -169,89 +170,172 @@ def density_field_to_convergence(density_field,
     return kappa
 
 
-def compute_signal_capture_ratio(cosmo, kappa_map, field_size_deg, npix, z_source, return_details=False):
+
+
+
+def project_flat_sky(field,
+                     box_size,
+                     field_size_deg,
+                     field_npix,
+                     distance_to_center,
+                     weights=None):
     """
-    Compute the ratio R_ell = C_ell^box / C_ell^total robustly.
-    Handles small fields of view by adapting bin sizes.
+    Project a 3D field (Cartesian) onto a flat-sky 2D map using Born-like approximation (lightcone geometry).
+    This sums the field along the line of sight, accounting for the divergence of angular coordinates with distance.
+
+    Parameters
+    ----------
+    field : array [Nx, Ny, Nz]
+        3D field to project.
+    box_size : float or array
+        Physical box size (Mpc/h).
+    field_size_deg : float
+        Angular field of view (degrees).
+    field_npix : int
+        Number of pixels for the output 2D map.
+    distance_to_center : float
+        Comoving distance to the center of the box (Mpc/h).
+    weights : array [Nz] or None
+        Optional weights to apply to each slice before summing.
+
+    Returns
+    -------
+    projection : array [field_npix, field_npix]
+        The projected 2D map.
     """
+    import numpy as np
+    from scipy.ndimage import map_coordinates
+
+    mesh_shape = field.shape
+    box_size = np.atleast_1d(box_size)
+    if len(box_size) == 1:
+        box_size = np.repeat(box_size, 3)
+
+    dx = box_size[0] / mesh_shape[0]
+    dz = box_size[2] / mesh_shape[2]
+
+    # Angular coordinates (radians)
+    theta = np.linspace(-field_size_deg / 2, field_size_deg / 2, field_npix, endpoint=False) * (np.pi / 180.0)
+    rowgrid, colgrid = np.meshgrid(theta, theta, indexing='ij')
+    coords = np.stack([rowgrid, colgrid], axis=0)
+
+    # Radial distance planes
+    r_start = distance_to_center - box_size[2] / 2.0
+    r_planes = r_start + (np.arange(mesh_shape[2]) + 0.5) * dz
+
+    projection = np.zeros((field_npix, field_npix))
+
+    for i in range(mesh_shape[2]):
+        r = r_planes[i]
+        # Map angular coords to pixel coords in the box at distance r
+        # x_phys = theta * r
+        # x_pix = x_phys / dx + center_pix
+        pixel_coords = coords * r / dx + mesh_shape[0] / 2.0
+
+        # Extract slice
+        plane = field[:, :, i]
+        if weights is not None:
+             plane = plane * weights[i]
+
+        # Interpolate
+        projected_slice = map_coordinates(plane, pixel_coords, order=1, mode='wrap')
+
+        projection += projected_slice
+
+    return projection
+
+
+def compute_high_z_cl(cosmo, ell, chi_min, chi_max, z_source, n_steps=100):
+    """
+    Compute Cl of convergence for a specific range of comoving distance [chi_min, chi_max].
+    Uses Limber approximation and nonlinear matter power spectrum.
+
+    Parameters
+    ----------
+    cosmo : jax_cosmo.Cosmology
+    ell : array
+        Ell values to compute Cl for.
+    chi_min : float
+        Minimum comoving distance (Mpc/h)
+    chi_max : float
+        Maximum comoving distance (Mpc/h)
+    z_source : float
+        Source redshift
+    n_steps : int
+        Number of integration steps
+
+    Returns
+    -------
+    cl : array
+        Convergence Cl values in the same shape as ell.
+    """
+    import jax
     import jax.numpy as jnp
     import jax_cosmo as jc
-    import numpy as np
+    import jax_cosmo.constants as constants
 
-    # 1. Setup Geometry
-    field_size_rad = field_size_deg * np.pi / 180.
+    # Source distance
+    chi_s = jc.background.radial_comoving_distance(cosmo, 1.0 / (1.0 + z_source))[0]
 
-    # Fundamental frequency (separation between Fourier modes)
-    delta_ell = 2 * np.pi / field_size_rad
+    # Clamp chi_max to chi_s to avoid computing P(k) at z > z_source
+    chi_max = jnp.minimum(chi_max, chi_s)
 
-    # 2. Compute 2D Power Spectrum of the Box
-    kappa_k = np.fft.fftn(kappa_map)
-    P_k_2d = np.abs(kappa_k)**2 * (field_size_rad**2 / npix**4)
+    # Integration grid
+    chi = jnp.linspace(chi_min, chi_max, n_steps)
 
-    # Grid of ell values
-    ell_freq = np.fft.fftfreq(npix, d=field_size_rad/npix) * 2 * np.pi
-    lx, ly = np.meshgrid(ell_freq, ell_freq, indexing='ij')
-    ell_grid = np.sqrt(lx**2 + ly**2)
+    # Scale factor and redshift at integration points
+    a = jc.background.a_of_chi(cosmo, chi)
 
-    # 3. Binning
-    # We ensure bins are at least as wide as delta_ell to avoid empty bins
-    # and "aliasing" in the 1D estimation.
-    bin_width = max(50.0, delta_ell * 1.1)
-    ell_max = ell_grid.max()
-    ell_edges = np.arange(0, ell_max + bin_width, bin_width)
+    # Lensing efficiency Kernel W(chi)
+    # kappa = integral W(chi) * delta * dchi
+    # W(chi) = (3/2 Omega_m (H0/c)^2) * (chi/a) * (chi_s - chi)/chi_s
+    constant_factor = 1.5 * cosmo.Omega_m * (constants.H0 / constants.c)**2
 
-    # Binning logic
-    dig = np.digitize(ell_grid.flatten(), ell_edges)
-    mask = (dig > 0) & (dig < len(ell_edges))
+    w_val = constant_factor * (chi / a) * (chi_s - chi) / chi_s
+    w_val = jnp.where(chi < chi_s, w_val, 0.0)
 
-    P_flat = P_k_2d.flatten()
+    def get_cl_per_ell(ell):
+        # Limber approximation: k = (ell + 0.5) / chi
+        k = (ell + 0.5) / chi
 
-    bin_counts = np.bincount(dig[mask], minlength=len(ell_edges))
-    bin_sums = np.bincount(dig[mask], weights=P_flat[mask], minlength=len(ell_edges))
+        # Power spectrum P(k, z)
+        # We need P(k_i, a_i) element-wise along the integration path.
+        # jax_cosmo.power.nonlinear_matter_power tries to broadcast k and a, which can fail or produce 2D arrays.
+        # We explicitly vmap over the integration steps to ensure 1D output.
+        def get_pk_elementwise(ki, ai):
+             # Pass scalars directly; vmap handles the loop.
+             # If jax_cosmo returns a 0-d array, that's fine.
+             return jnp.squeeze(jc.power.nonlinear_matter_power(cosmo, ki, ai))
 
-    # Avoid division by zero
-    with np.errstate(divide='ignore', invalid='ignore'):
-        C_ell_box_1d = bin_sums / bin_counts
+        pk = jax.vmap(get_pk_elementwise)(k, a)
 
-    bin_centers = 0.5 * (ell_edges[1:] + ell_edges[:-1])
+        # Integrand: W^2(chi) / chi^2 * P(k, z)
+        integrand = (w_val**2 / chi**2) * pk
 
-    # Filter valid bins
-    valid = (bin_counts[1:] > 0) & np.isfinite(C_ell_box_1d[1:])
+        # Trapezoidal integration
+        # Manual implementation for uniform grid
+        dx = chi[1] - chi[0]
+        # trapezoid sum = sum(y) - 0.5*(y[0] + y[-1])
+        return (jnp.sum(integrand) - 0.5 * (integrand[0] + integrand[-1])) * dx
 
-    # Align arrays
-    C_ell_box_1d = C_ell_box_1d[1:]
-    current_bin_centers = bin_centers
+    # Always compute on 1D grid and interpolate for efficiency
+    # This prevents recomputing physics for millions of pixels
+    # Stop gradient on input ell to prevent unnecessary tracing/VJP issues
+    ell = jax.lax.stop_gradient(ell)
 
-    # Apply validity mask
-    C_ell_box_1d = C_ell_box_1d[valid]
-    current_bin_centers = current_bin_centers[valid]
+    # Always compute on 1D grid and interpolate for efficiency
+    ell_min = jnp.min(ell)
+    ell_max = jnp.max(ell)
 
-    # 4. Theory C_ell
-    # We calculate theory at the exact bin centers to minimize interpolation errors
-    probe = jc.probes.WeakLensing([jc.redshift.delta_nz(z_source)], sigma_e=0)
-    cl_theory = jc.angular_cl.angular_cl(cosmo, current_bin_centers, [probe])
-    cl_theory = jnp.squeeze(cl_theory)
+    # Use simple linear spacing
+    n_interp = 2048
+    ell_interp = jnp.linspace(ell_min, ell_max, n_interp)
+    ell_interp = jax.lax.stop_gradient(ell_interp)
 
-    # 5. Compute Ratio in 1D first
-    # Ratio at bin centers
-    ratio_1d = C_ell_box_1d / cl_theory
+    # Vectorize physics calculation over 1D grid (depends on cosmo)
+    cl_interp = jax.vmap(get_cl_per_ell)(ell_interp)
 
-    # 6. Interpolate Ratio to 2D
-    # Using 'nearest' or linear extrapolation for low-ell is safer than left=0
-    # because the ratio should be roughly constant at low ell (scale independent growth)
-    ratio_2d = np.interp(ell_grid.flatten(), current_bin_centers, ratio_1d, left=ratio_1d[0], right=0)
-    ratio_2d = ratio_2d.reshape(npix, npix)
-
-    # Cap
-    ratio_2d = np.clip(ratio_2d, 1e-8, 1.0)
-
-    if return_details:
-        details = {
-            "ell": current_bin_centers,
-            "cl_box": C_ell_box_1d,
-            "cl_theory": cl_theory,
-            "ratio_1d": ratio_1d
-        }
-        return ratio_2d, details
-
-    return ratio_2d
+    # Interpolate to full shape
+    # stop_gradient on ell ensures we don't differentiate w.r.t coordinates
+    cl_interp = jnp.squeeze(cl_interp)
+    return jnp.interp(ell, ell_interp, cl_interp)

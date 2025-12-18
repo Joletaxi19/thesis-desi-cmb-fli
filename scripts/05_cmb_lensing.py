@@ -2,10 +2,6 @@
 """
 Joint Field-Level Inference: Galaxies + CMB Lensing
 
-This script extends 04_field_level_inference.py to include CMB lensing convergence
-as additional observational constraint for joint inference.
-
-When cmb_lensing.enabled=false: behaves exactly like script 04
 When cmb_lensing.enabled=true: uses joint likelihood p(obs_gal, kappa_obs | δ, cosmo, bias)
 """
 
@@ -28,10 +24,10 @@ import jax_cosmo as jc
 import matplotlib.pyplot as plt
 import numpy as np
 import numpyro
-import yaml
 from blackjax.adaptation.mclmc_adaptation import MCLMCAdaptationState
 from jax import jit, pmap, tree
 
+from desi_cmb_fli import cmb_lensing, plot, utils
 from desi_cmb_fli.bricks import get_cosmology
 from desi_cmb_fli.chains import Chains
 from desi_cmb_fli.model import FieldLevelModel, default_config
@@ -45,8 +41,7 @@ parser.add_argument("--config", default="configs/04_field_level_inference/config
 args = parser.parse_args()
 
 # Load config
-with open(args.config) as f:
-    cfg = yaml.safe_load(f)
+cfg = utils.yload(args.config)
 
 # Create output dirs in SCRATCH
 
@@ -76,11 +71,18 @@ print("MODEL CONFIGURATION")
 print("=" * 80)
 
 model_config = default_config.copy()
-model_config["mesh_shape"] = tuple(cfg["model"]["mesh_shape"])
 model_config["box_shape"] = tuple(cfg["model"]["box_shape"])
+
+cell_size = float(cfg["model"]["cell_size"])
+mesh_shape = [int(round(L / cell_size)) for L in model_config["box_shape"]]
+# Ensure they are even
+mesh_shape = [n + 1 if n % 2 != 0 else n for n in mesh_shape]
+model_config["mesh_shape"] = tuple(mesh_shape)
+print(f"Computed mesh_shape: {model_config['mesh_shape']} (from cell_size={cell_size})")
+
 model_config["evolution"] = cfg["model"]["evolution"]
 model_config["lpt_order"] = cfg["model"]["lpt_order"]
-model_config["a_obs"] = cfg["model"]["a_obs"]
+
 model_config["gxy_density"] = cfg["model"]["gxy_density"]
 
 # CMB lensing config
@@ -94,31 +96,20 @@ if cmb_enabled:
     model_config["cmb_field_size_deg"] = None
     model_config["cmb_field_npix"] = int(cmb_cfg["field_npix"]) if "field_npix" in cmb_cfg else None
 
-    model_config["cmb_z_source"] = float(cmb_cfg.get("z_source", 1100.0))
+    model_config["full_los_correction"] = cmb_cfg.get("full_los_correction", False)
+    if model_config["full_los_correction"]:
+        print("✓ full_los_correction ENABLED")
+
     model_config["cmb_z_source"] = float(cmb_cfg.get("z_source", 1100.0))
 
-    # Update for new noise model (N_ell)
     if "cmb_noise_nell" in cmb_cfg:
         model_config["cmb_noise_nell"] = cmb_cfg["cmb_noise_nell"]
         print(f"  Noise: Using N_ell from {model_config['cmb_noise_nell']}")
     else:
-        # Fallback or error if not provided (since we removed default arcmin noise)
+        # Fallback or error if not provided
         raise ValueError("cmb_noise_nell must be provided in config when cmb_enabled=True")
 
-    # Check for closure test flag (optional)
-    if cmb_cfg.get("use_reduced_noise_for_closure_test", False):
-        print("  ! Configuring for Closure Test: enable signal-matched noise reduction")
-        model_config["use_reduced_noise_for_closure_test"] = True
-
     print(f"  z_source: {model_config['cmb_z_source']}")
-
-    print(f"  z_source: {model_config['cmb_z_source']}")
-
-    # --- Validation: Lensing Kernel Coverage ---
-    # NOTE: compute_lensing_efficiency is deprecated
-    # The noise matching is now handled automatically in the model if use_reduced_noise_for_closure_test is set.
-
-    # -------------------------------------------
 
 else:
     print("\n⚠️  CMB lensing DISABLED (galaxies only)")
@@ -149,85 +140,16 @@ if model.cmb_enabled and model.cmb_noise_nell is not None:
         mask = (ell_in > 0) & (nell_in > 0)
 
         plt.figure(figsize=(8, 6))
-        plt.loglog(ell_in[mask], nell_in[mask], label="Input $N_\\ell$")
-        plt.xlabel(r"$\ell$")
-        plt.ylabel(r"$N_\ell$")
+        plot.plot_pow(ell_in[mask], nell_in[mask], log=True, ylabel=r"$N_\ell$")
         plt.title("CMB Lensing Noise Power Spectrum")
         plt.grid(True, which="both", ls="-", alpha=0.5)
-        plt.legend()
+        plt.legend(["Input $N_\\ell$"])
         plt.savefig(fig_dir / "cmb_noise_spectrum.png", dpi=150)
         plt.close()
         print(f"✓ CMB noise plot: {fig_dir / 'cmb_noise_spectrum.png'}")
     except Exception as e:
         print(f"⚠️  Could not plot N_ell: {e}")
 
-    # Plot Noise Scaling Analysis (Closure Test)
-    if model_config.get("use_reduced_noise_for_closure_test", False) and hasattr(model, "noise_scaling_details"):
-        print("\nPlotting Reduced Noise Analysis...")
-        try:
-            details = model.noise_scaling_details
-            ell_k = details["ell"]
-            cl_box = details["cl_box"]
-            cl_theory = details["cl_theory"]
-            ratio = details["ratio_1d"]
-
-            fig, axes = plt.subplots(2, 2, figsize=(14, 10))
-
-            # 1. Power Spectra
-            ax = axes[0, 0]
-            ax.loglog(ell_k, cl_theory, label=r"Theory $C_\ell^{\kappa\kappa}$")
-            ax.loglog(ell_k, cl_box, '--', label=r"Box $C_\ell^{\kappa\kappa}$")
-            ax.axvline(ell_k[-1], color='k', ls=':', label=r"$\ell_{max}$")
-            ax.set_title("Signal Power Spectra")
-            ax.set_xlabel(r"$\ell$")
-            ax.legend()
-            ax.grid(True, alpha=0.3)
-
-            # 2. Ratio
-            ax = axes[0, 1]
-            ax.semilogx(ell_k, ratio, label=r"$R_\ell = C_\ell^{box} / C_\ell^{theory}$")
-            ax.axhline(1.0, color='gray', ls='--')
-            ax.set_title("Signal Capture Ratio")
-            ax.set_xlabel(r"$\ell$")
-            ax.set_ylim(-0.1, 1.1)
-            ax.legend()
-            ax.grid(True, alpha=0.3)
-
-            # 3. Effective Noise vs Input
-            # N_ell_eff = N_ell_input * Ratio
-            ax = axes[1, 0]
-            ax.loglog(ell_in[mask], nell_in[mask], label=r"Input $N_\ell$", color='gray', alpha=0.5)
-            # Interpolate input N_ell to ell_k
-            nell_interp = np.exp(np.interp(np.log(ell_k), np.log(ell_in[mask]), np.log(nell_in[mask])))
-            nell_eff = nell_interp * ratio
-            nell_eff = np.clip(nell_eff, 1e-30, None)
-
-            ax.loglog(ell_k, nell_eff, label=r"Effective $N_\ell$ (Scaled)")
-            ax.set_title("Effective Noise Power")
-            ax.set_xlabel(r"$\ell$")
-            ax.legend()
-            ax.grid(True, alpha=0.3)
-
-            # 4. SNR
-            ax = axes[1, 1]
-            # SNR^2 per mode approx C_l / N_l
-            snr_theory = cl_theory / nell_interp
-            snr_box = cl_box / nell_eff
-
-            ax.loglog(ell_k, snr_theory, label=r"Theory SNR ($C_\ell/N_\ell$)")
-            ax.loglog(ell_k, snr_box, '--', label=r"Scaled SNR ($C_\ell^{box}/N_\ell^{eff}$)")
-            ax.set_title("Signal-to-Noise Ratio (per mode)")
-            ax.set_xlabel(r"$\ell$")
-            ax.legend()
-            ax.grid(True, alpha=0.3)
-
-            plt.tight_layout()
-            plt.savefig(fig_dir / "noise_scaling_analysis.png", dpi=150)
-            plt.close()
-            print(f"✓ Noise scaling plot: {fig_dir / 'noise_scaling_analysis.png'}")
-
-        except Exception as e:
-            print(f"⚠️  Could not plot noise analysis: {e}")
 
 
 # Generate truth
@@ -244,7 +166,7 @@ truth = model.predict(
     samples=truth_params,
     hide_base=False,
     hide_samp=False,
-    hide_det=False,  # Keep deterministic sites for kappa_pred
+    hide_det=False,
     frombase=True,
     rng=jr.key(seed),
 )
@@ -264,12 +186,22 @@ if cmb_enabled and "kappa_obs" in truth:
 # Visualize
 fig, axes = plt.subplots(1, 3, figsize=(15, 4))
 idx = model_config["mesh_shape"][0] // 2
-slices = [truth["obs"][idx, :, :], truth["obs"][:, idx, :], truth["obs"][:, :, idx]]
+slices = [truth["obs"], truth["obs"], truth["obs"]]
+slis = [
+    (idx, 0),  # x=idx (last axis in plot_mesh, so axis=0) -> No, plot_mesh default axis=-1.
+    # truth['obs'] is [x, y, z].
+    # YZ plane (x fixed): axis=0
+    # XZ plane (y fixed): axis=1
+    # XY plane (z fixed): axis=2
+]
+# We use plot_mesh(mesh, sli=idx, axis=ax) to slice at index idx along axis ax
 titles = [f"YZ (x={idx})", f"XZ (y={idx})", f"XY (z={idx})"]
-for ax, data, title in zip(axes, slices, titles, strict=True):
-    im = ax.imshow(data, origin="lower", cmap="viridis")
+axes_idx = [0, 1, 2]
+
+for ax, axis_idx, title in zip(axes, axes_idx, titles, strict=True):
+    plt.sca(ax)
+    plot.plot_mesh(truth["obs"], sli=slice(idx, idx + 1), axis=axis_idx, cmap="viridis")
     ax.set_title(title)
-    plt.colorbar(im, ax=ax, label="Galaxy count")
 plt.tight_layout()
 plt.savefig(fig_dir / "obs_slices.png", dpi=150)
 plt.close()
@@ -306,86 +238,126 @@ if cmb_enabled and "kappa_obs" in truth:
     plt.close()
     print(f"✓ CMB visualization: {fig_dir / 'cmb_kappa_truth.png'}")
 
-    # Cross-correlation validation (CMB-Galaxy)
-    print("\nComputing CMB-Galaxy cross-correlation...")
-    from scipy.ndimage import map_coordinates
-
-    # Project galaxy field onto CMB angular coordinates (same as convergence_Born)
-    # Retrieve calculated field size from the model instance
-    field_size_deg = model.cmb_field_size_deg
-    field_npix = model.cmb_field_npix
-    box_size = model_config["box_shape"][0]
-    mesh_shape_val = model_config["mesh_shape"][0]
-
-    # Angular coordinate grid
-    theta = np.linspace(-field_size_deg/2, field_size_deg/2, field_npix, endpoint=False)
-    rowgrid, colgrid = np.meshgrid(theta, theta, indexing='ij')
-    coords = np.array(np.stack([rowgrid, colgrid], axis=0)) * (np.pi / 180.0)
-
-    # Distance planes
-    dx = box_size / mesh_shape_val
-    dz = box_size / mesh_shape_val
+    # Project galaxy field (SUM along LOS, like kappa integral)
+    # Needed for C_l^gg and C_l^kg
+    gxy_field = np.array(truth["obs"])
 
     # Recalculate box center for validation (same as in model)
-    # Use the same cosmology as truth generation
     cosmo_val = get_cosmology(**truth_params)
     chi_center_val = jc.background.radial_comoving_distance(cosmo_val, jnp.atleast_1d(model_config["a_obs"]))[0]
     chi_center_val = float(chi_center_val)
 
-    r_start = chi_center_val - box_size / 2.0
-    r_planes = r_start + (np.arange(mesh_shape_val) + 0.5) * dz
+    gxy_proj = cmb_lensing.project_flat_sky(
+        gxy_field,
+        model_config["box_shape"],
+        model.cmb_field_size_deg,
+        model.cmb_field_npix,
+        chi_center_val
+    )
 
-    # Project galaxy field (SUM along LOS, like kappa integral)
-    gxy_field = np.array(truth['obs'])
-    gxy_proj = np.zeros((field_npix, field_npix))
+    # Report stats
+    print(f"  Field size: {model.cmb_field_size_deg}°, npix: {model.cmb_field_npix}")
+    print(f"  Galaxy projection: mean={gxy_proj.mean():.4f}, std={gxy_proj.std():.4f}")
 
-    for i in range(mesh_shape_val):
-        r = r_planes[i]
-        pixel_coords = coords * r / dx + mesh_shape_val / 2.0
-        plane = map_coordinates(gxy_field[:, :, i], pixel_coords, order=1, mode='wrap')
-        gxy_proj += plane
+    # =========================================================================
+    # DIAGNOSTIC SPECTRA: C_l
+    # =========================================================================
+    print("\nComputing Diagnostic Power Spectra C_l...")
 
-    # Compute cross-correlation
-    kappa_flat = np.array(truth['kappa_obs']).flatten()
-    gxy_proj_flat = gxy_proj.flatten()
-    corr_cross = np.corrcoef(kappa_flat, gxy_proj_flat)[0, 1]
+    from desi_cmb_fli.metrics import spectrum
 
-    # Visualize
-    fig, axes = plt.subplots(1, 3, figsize=(18, 5))
+    def get_cl_2d(map1, map2=None, field_size_deg=1.0):
+        """Compute 2D angular power spectrum C_l."""
+        # Convert to radians
+        field_size_rad = field_size_deg * np.pi / 180.0
 
-    im0 = axes[0].imshow(truth['kappa_obs'], origin='lower', cmap='RdBu_r')
-    axes[0].set_title('CMB Convergence κ')
-    axes[0].set_xlabel('x [pix]')
-    axes[0].set_ylabel('y [pix]')
-    plt.colorbar(im0, ax=axes[0], label='κ')
+        # Reshape to (N, N, 1) for 3D spectrum function
+        m1 = jnp.expand_dims(map1, axis=-1)
+        m2 = jnp.expand_dims(map2, axis=-1) if map2 is not None else None
 
-    im1 = axes[1].imshow(gxy_proj, origin='lower', cmap='viridis')
-    axes[1].set_title('Galaxy Field ⟨count⟩ (projected)')
-    axes[1].set_xlabel('x [pix]')
-    axes[1].set_ylabel('y [pix]')
-    plt.colorbar(im1, ax=axes[1], label='count')
+        # Use box depth 1.0 (arbitrary)
+        box_shape = (field_size_rad, field_size_rad, 1.0)
 
-    axes[2].scatter(gxy_proj_flat, kappa_flat, alpha=0.3, s=5, c='blue', edgecolors='none')
-    axes[2].set_xlabel('Galaxy count (projected)')
-    axes[2].set_ylabel('CMB Convergence κ')
-    axes[2].set_title('Cross-Correlation: CMB vs Galaxies')
-    axes[2].grid(True, alpha=0.3)
+        # Calculate manual kedges to ensure we cover the transverse scales
+        # k_max ~ pi * N / L
+        # We want bins up to this k_max
+        nx = map1.shape[0]
+        ell_nyquist = np.pi * nx / field_size_rad
 
-    color = 'green' if corr_cross > 0.8 else ('orange' if corr_cross > 0.5 else 'red')
-    axes[2].text(0.05, 0.95, f"r = {corr_cross:.4f}",
-                transform=axes[2].transAxes,
-                bbox={'boxstyle': 'round', 'facecolor': color, 'alpha': 0.8, 'edgecolor': 'black'},
-                verticalalignment='top', fontsize=14, fontweight='bold', color='white')
+        # 50 logarithmic bins from l=10 to l_nyquist
+        kedges = np.geomspace(10, ell_nyquist, 50)
+
+        # Compute spectrum
+        k, cl = spectrum(m1, m2, box_shape=box_shape, kedges=list(kedges))
+
+        return k, cl
+
+    # 1. Reconstruct kappa_box (without high-z correction)
+    print("  Reconstructing Box-Only Kappa...")
+    kappa_box = cmb_lensing.density_field_to_convergence(
+        truth['matter_mesh'],
+        model.box_shape,
+        cosmo_val,
+        model.cmb_field_size_deg,
+        model.cmb_field_npix,
+        model.cmb_z_source,
+        box_center_chi=chi_center_val,
+    )
+    if kappa_box.ndim == 3 and kappa_box.shape[0] == 1:
+        kappa_box = kappa_box.squeeze(0)
+
+    # 2. Identify fields
+    kappa_total = truth['kappa_pred'] # Signal (Box + High-Z if corrected)
+    kappa_obs = truth['kappa_obs']    # Signal + Noise
+
+    # 3. Compute Spectra
+    field_size = model.cmb_field_size_deg
+
+    # Kappa Auto-correlations
+    ell, cl_kk_box = get_cl_2d(kappa_box, field_size_deg=field_size)
+    _, cl_kk_total = get_cl_2d(kappa_total, field_size_deg=field_size)
+    _, cl_kk_obs = get_cl_2d(kappa_obs, field_size_deg=field_size)
+
+    # Galaxy Auto-correlation
+    gxy_mean = jnp.mean(gxy_proj)
+    gxy_delta = (gxy_proj - gxy_mean) / gxy_mean
+    _, cl_gg = get_cl_2d(gxy_delta, field_size_deg=field_size)
+
+    # Kappa-Galaxy Cross-correlation
+    _, cl_kg = get_cl_2d(kappa_total, gxy_delta, field_size_deg=field_size)
+
+    # 4. Plot (Grouped Logic)
+    fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+
+    # --- SUBPLOT 1: Kappa Auto ---
+    plt.sca(axes[0])
+    plot.plot_pow(ell, cl_kk_box, label=r"$C_\ell^{\kappa \kappa}$ (Box Only)", color='blue', ls='--', log=True, ylabel=r"$C_\ell$")
+
+    if model.full_los_correction:
+        plot.plot_pow(ell, cl_kk_total, label=r"$C_\ell^{\kappa \kappa}$ (Total Signal)", color='blue', log=True, ylabel=r"$C_\ell$")
+
+    plot.plot_pow(ell, cl_kk_obs, label=r"$C_\ell^{\kappa \kappa}$ (Observed)", color='gray', alpha=0.5, log=True, ylabel=r"$C_\ell$")
+
+    plt.xlabel(r"Multipole $\ell$")
+    plt.title(r"CMB Convergence Auto-Spectra ($C_\ell^{\kappa \kappa}$)")
+    plt.legend()
+    plt.grid(True, which="both", ls="-", alpha=0.2)
+
+    # --- SUBPLOT 2: Galaxy & Cross ---
+    plt.sca(axes[1])
+    plot.plot_pow(ell, cl_gg, label=r"$C_\ell^{gg}$ (Galaxy $\delta$)", color='green', log=True, ylabel=r"$C_\ell$")
+    plot.plot_pow(ell, np.abs(cl_kg), label=r"|$C_\ell^{\kappa g}$| (Cross)", color='red', log=True, ylabel=r"$C_\ell$")
+
+    plt.xlabel(r"Multipole $\ell$")
+    # plt.ylabel(r"$C_\ell$") # Shared y-label or separate? Separate is safer as units might differ conceptually
+    plt.title(r"Galaxy Auto & Cross Spectra")
+    plt.legend()
+    plt.grid(True, which="both", ls="-", alpha=0.2)
 
     plt.tight_layout()
-    plt.savefig(fig_dir / "cmb_galaxy_cross_correlation.png", dpi=150)
+    plt.savefig(fig_dir / "cl_diagnostics.png", dpi=150)
     plt.close()
-
-    print(f"✓ Cross-correlation: {fig_dir / 'cmb_galaxy_cross_correlation.png'}")
-    print(f"  κ vs galaxy field: r = {corr_cross:.4f}")
-    print(f"  Field size: {field_size_deg}°, npix: {field_npix}")
-    print(f"  Galaxy projection: mean={gxy_proj.mean():.4f}, std={gxy_proj.std():.4f}")
-    print(f"  CMB κ: mean={np.array(truth['kappa_obs']).mean():.6f}, std={np.array(truth['kappa_obs']).std():.6f}")
+    print(f"✓ Diagnostic Spectra: {fig_dir / 'cl_diagnostics.png'}")
 
 # MCMC config
 print("\n" + "=" * 80)
@@ -395,11 +367,20 @@ print("=" * 80)
 num_warmup = cfg["mcmc"]["num_warmup"]
 num_samples = cfg["mcmc"]["num_samples"]  # Samples PER BATCH
 num_batches = cfg["mcmc"].get("num_batches", 1)  # Number of batches
-num_chains = cfg["mcmc"]["num_chains"]
+num_chains_req = cfg["mcmc"]["num_chains"]
+
+# Auto-adjust num_chains if fewer devices are available
+if len(devices) < num_chains_req:
+    print(f"\n⚠️  WARNING: Requested {num_chains_req} chains but only {len(devices)} devices available.")
+    print(f"   Adjusting num_chains to {len(devices)} to avoid pmap crash.")
+    num_chains = max(1, len(devices))
+else:
+    num_chains = num_chains_req
 
 mclmc_cfg = cfg["mcmc"].get("mclmc", {})
 desired_energy_var = float(mclmc_cfg.get("desired_energy_var", 5e-4))
-diagonal_precond = bool(mclmc_cfg.get("diagonal_preconditioning", False))
+diagonal_precond = bool(mclmc_cfg.get("diagonal_preconditioning", True))
+thinning = int(mclmc_cfg.get("thinning", 1))
 
 print("Sampler: MCLMC (Multi-chain + Mini-batch)")
 print(f"Chains: {num_chains}")
@@ -409,6 +390,7 @@ print(f"Number of batches: {num_batches}")
 print(f"Total samples per chain: {num_samples * num_batches}")
 print(f"Total samples (all chains): {num_samples * num_batches * num_chains}")
 print(f"Energy var: {desired_energy_var}, Diag precond: {diagonal_precond}")
+print(f"Thinning: {thinning}")
 
 if len(devices) >= num_chains:
     print(f"\n✓ {num_chains} chains // across {len(devices)} GPUs")
@@ -443,16 +425,16 @@ rngs = jr.split(jr.key(45), num_chains)
 def init_fn(rng, delta):
     return model.kaiser_post(rng, delta)
 
-init_params_ = pmap(jit(init_fn), in_axes=(0, None))(rngs, delta_obs)
+init_params_ = pmap(init_fn, in_axes=(0, None))(rngs, delta_obs)
 init_mesh_ = {k: init_params_[k] for k in ["init_mesh_"]}
 
-print("Warming mesh (2^10 steps, cosmo/bias fixed)...")
+print(f"Warming mesh ({cfg['mcmc'].get('mesh_warmup_steps', 2**13)} steps, cosmo/bias fixed)...")
 warmup_mesh_fn = pmap(jit(get_mclmc_warmup(
     model.logpdf,
-    n_steps=2**10,
+    n_steps=cfg["mcmc"].get("mesh_warmup_steps", 2**13),
     config=None,
     desired_energy_var=1e-6,
-    diagonal_preconditioning=False,
+    diagonal_preconditioning=True,
 )))
 
 state_mesh, config_mesh = warmup_mesh_fn(jr.split(jr.key(43), num_chains), init_mesh_)
@@ -492,6 +474,20 @@ print(f"  Logdens (median): {float(jnp.median(state.logdensity)):.2f}")
 print(f"  Adapted L (median): {median_L_adapted:.6f}")
 print(f"  step_size (median): {median_ss:.6f}")
 
+if median_ss < 1.0:
+    print("\n⚠️  WARNING: Step size is very small! This indicates poor conditioning or mixing issues.")
+    print("   Check if diagonal_preconditioning is enabled or if priors are too tight.")
+
+
+# Safety clamp for Galaxy-Only runs (which can be unstable at z~0.3 with large steps)
+if not cmb_enabled:
+    safe_ss_max = 0.5
+    if median_ss > safe_ss_max:
+        print(f"\n⚠️  [Auto-Correction] Galaxy-Only run detected with large step size ({median_ss:.2f}).")
+        print(f"   Capping step_size to {safe_ss_max} to prevent numerical instability.")
+        print("   (Note: This reduces the physical trajectory length L to ensure stability, potentially increasing autocorrelation.)")
+        median_ss = safe_ss_max
+
 # Recalculate L (benchmark approach)
 eval_per_ess = 1e3
 recalc_L = float(0.4 * eval_per_ess / 2 * median_ss)
@@ -502,11 +498,10 @@ config = tree.map(lambda x: jnp.broadcast_to(x, (num_chains, *jnp.shape(x))), co
 print(f"\n  Recalculated L: {recalc_L:.6f} (was: {median_L_adapted:.6f})")
 
 jnp.savez(config_dir / "warmup_state.npz", **state.position)
-with open(config_dir / "warmup_config.yaml", "w") as f:
-    yaml.dump(
-        {"L": recalc_L, "step_size": median_ss, "eval_per_ess": eval_per_ess},
-        f,
-    )
+utils.ydump(
+    {"L": recalc_L, "step_size": median_ss, "eval_per_ess": eval_per_ess},
+    config_dir / "warmup_config.yaml",
+)
 
 # STEP 3: Multi-Chain Mini-Batch Sampling
 print("\n" + "=" * 80)
@@ -514,12 +509,13 @@ print("STEP 3: MULTI-CHAIN MINI-BATCH SAMPLING")
 print("=" * 80)
 
 # Setup sampling function (pmap for parallel chains)
-run_fn = pmap(jit(get_mclmc_run(model.logpdf, n_samples=num_samples, thinning=1, progress_bar=False)))
+run_fn = pmap(jit(get_mclmc_run(model.logpdf, n_samples=num_samples, thinning=thinning, progress_bar=False)))
 
 print(f"\nRunning {num_chains} chains in parallel, each with {num_batches} sequential batches")
 print(f"   Samples per batch: {num_samples}")
 print(f"   Total per chain: {num_samples * num_batches}")
-print(f"   Total all chains: {num_samples * num_batches * num_chains}\n")
+print(f"   Total all chains: {num_samples * num_batches * num_chains}")
+print(f"   Total evaluations per chain: {num_samples * num_batches * thinning}\n")
 
 
 
@@ -627,101 +623,32 @@ print("Physical keys:", physical_samples.keys())
 comp_params = ["Omega_m", "sigma8", "b1", "b2", "bs2", "bn2"]
 # Note: physical_samples keys do NOT have underscores (e.g. "Omega_m")
 
-def compute_rhat(chains, burnin_frac=0.5):
-    """Compute Gelman-Rubin R-hat for convergence.
-
-    chains: (num_chains, num_samples)
-    burnin_frac: fraction of samples to discard as burn-in (default 0.5)
-    """
-    num_chains, num_samples = chains.shape
-
-    # Discard burn-in (standard: 50% of post-warmup samples)
-    burnin = int(num_samples * burnin_frac)
-    chains = chains[:, burnin:]
-    _, num_samples = chains.shape
-
-    # Chain means (after burn-in)
-    chain_means = np.mean(chains, axis=1)
-    # Grand mean
-    grand_mean = np.mean(chain_means)
-
-    # R-hat
-    if num_chains < 2:
-        return float('nan')
-
-    # Between-chain variance
-    B = num_samples / (num_chains - 1) * np.sum((chain_means - grand_mean)**2)
-
-    # Within-chain variance
-    chain_vars = np.var(chains, axis=1, ddof=1)
-    W = np.mean(chain_vars)
-
-    # Pooled variance estimate
-    var_plus = ((num_samples - 1) / num_samples) * W + (1 / num_samples) * B
-
-    # R-hat
-    rhat = np.sqrt(var_plus / W) if W > 0 else np.inf
-    return rhat
-
-print(f"\n{'Param':<10} {'R-hat':<10} {'Status':<15}")
-print("-" * 40)
-print("(After discarding 50% burn-in)")
-
-for p in comp_params:
-    # Use physical parameter name directly (no underscore)
-    if p in physical_samples:
-        rhat = compute_rhat(physical_samples[p], burnin_frac=0.5)
-        status = "✓ Converged" if rhat < 1.1 else ("⚠️  Marginal" if rhat < 1.2 else "❌ Not converged")
-        print(f"{p:<10} {rhat:<10.4f} {status:<15}")
-
+# Convergence diagnostics and statistics
 print("\n" + "=" * 80)
-print("STATISTICS (All Chains Combined)")
+print("DIAGNOSTICS & STATISTICS")
 print("=" * 80)
 
-for p in comp_params:
-    if p in physical_samples:
-        vals = physical_samples[p].reshape(-1)  # Flatten (chains, samples) → 1D
-        print(f"\n{p}: mean={np.mean(vals):.6f}, std={np.std(vals):.6f}")
-
-print("\n" + "=" * 80)
-print("PARAMETER RECOVERY")
-print("=" * 80)
-
-print(f"\n{'Param':<10} {'Truth':<10} {'Mean':<10} {'Std':<10} {'Bias(σ)':<10}")
-print("-" * 60)
-
-for p in comp_params:
-    if p in physical_samples:
-        # Pool all chains (R-hat validated convergence, so treat as single posterior)
-        vals = physical_samples[p].reshape(-1)  # Flatten (chains, samples) → 1D
-        mean, std = np.mean(vals), np.std(vals)
-        truth_val = truth_params.get(p, float('nan'))
-        bias = (mean - truth_val) / std if std > 0 else 0
-        print(f"{p:<10} {truth_val:<10.4f} {mean:<10.4f} {std:<10.4f} {bias:<10.2f}")
+if hasattr(physical_chains, "print_summary"):
+     physical_chains.print_summary()
+else:
+     # Fallback if chains.py not updated or method missing
+     print("chains.print_summary() not found.")
 
 # Viz: Traces
 print("\n" + "=" * 80)
 print("VISUALIZATIONS")
 print("=" * 80)
 
-fig, axes = plt.subplots(len(comp_params), 1, figsize=(12, 2 * len(comp_params)))
-for i, p in enumerate(comp_params):
-    if p in physical_samples:
-        ax = axes[i]
-        # Plot each chain separately
-        for c in range(num_chains):
-            ax.plot(physical_samples[p][c, :], alpha=0.7, lw=0.5, label=f"Chain {c}" if i == 0 else "")
-        if p in truth_params:
-            ax.axhline(truth_params[p], color="red", ls="--", lw=2, label="Truth" if i == 0 else "")
-        ax.set_ylabel(p)
-        ax.set_xlabel("Iter")
-        if i == 0:
-            ax.legend(loc="upper right", fontsize=8)
-        ax.grid(True, alpha=0.3)
-plt.tight_layout()
-plt.savefig(fig_dir / "traces.png", dpi=150)
-plt.close()
-print(f"✓ Traces: {fig_dir / 'traces.png'}")
+# Check which params are available
+available_params = [p for p in comp_params if p in physical_samples]
+
+if available_params:
+    plt.figure(figsize=(10, 2 * len(available_params)))
+    physical_chains.plot(names=available_params, grid=True)
+    plt.tight_layout()
+    plt.savefig(fig_dir / "traces.png", dpi=150)
+    plt.close()
+    print(f"✓ Traces: {fig_dir / 'traces.png'}")
 
 # Viz: Posteriors
 fig, axes = plt.subplots(2, 3, figsize=(15, 8))
@@ -745,38 +672,23 @@ print(f"✓ Posteriors: {fig_dir / 'posteriors.png'}")
 
 # Viz: GetDist Triangle Plot
 try:
-    from getdist import MCSamples, plots
+    from getdist import plots
 
     print("\nGenerating GetDist triangle plot...")
 
-    gd_samples = []
-
-    # Check which params are available
-    available_params = [p for p in comp_params if p in physical_samples]
-    available_labels = list(available_params)
-    available_truths = [truth_params.get(p, None) for p in available_params]
-
     if available_params:
-        # Iterate over chains
-        for c in range(num_chains):
-            # Stack parameters for this chain: (nsamples, nparams)
-            chain_data = []
-            for p in available_params:
-                chain_data.append(physical_samples[p][c, :])
+        # Create MCSamples object using to_getdist
+        samples_gd = physical_chains.to_getdist()
 
-            # Transpose to (nsamples, nparams)
-            chain_data = np.column_stack(chain_data)
-            gd_samples.append(chain_data)
-            print(f"  Chain {c} shape: {chain_data.shape}")
-
-        # Create MCSamples object
-        # settings={'ignore_rows': 0.5} to discard first 50% as burn-in (consistent with R-hat check)
-        samples_gd = MCSamples(samples=gd_samples, names=available_params, labels=available_labels,
-                               settings={'ignore_rows': 0.5})
+        # Prepare markers (truth values as dashed lines)
+        markers = {}
+        for p in available_params:
+            if p in truth_params:
+                markers[p] = truth_params[p]
 
         # Plot
         g = plots.get_subplot_plotter()
-        g.triangle_plot([samples_gd], filled=True, title_limit=1)
+        g.triangle_plot([samples_gd], filled=True, title_limit=1, markers=markers)
 
         g.export(str(fig_dir / "corner.png"))
         print(f"✓ GetDist plot: {fig_dir / 'corner.png'}")

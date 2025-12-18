@@ -110,29 +110,27 @@ Computation of convergence κ from matter fields using Born approximation.
 
 ## 6. Joint Field-Level Inference 🚧 (ongoing)
 
-Joint inference on synthetic galaxy + CMB lensing data.
+Joint inference on synthetic galaxy + CMB lensing data to constrain cosmology and initial conditions.
 
 **Script:** `scripts/05_cmb_lensing.py`
 **Implementation:**
-- Joint likelihood
-- Constrains cosmology from both tracers
-- Validated with cross-correlations
+- **Joint Likelihood**: Combines the galaxy number density likelihood with the CMB lensing convergence ($\kappa$) likelihood.
+- **Planck PR4 Noise**: Incorporates realistic reconstruction noise using the official Planck PR4 $N_\ell$ spectrum.
+- **Full LoS Correction**: Supplements the simulation box contribution with a theoretical high-redshift convergence power spectrum ($C_\ell^{\kappa_{high-z}}$) computed via `jax_cosmo`. This ensures the predicted lensing amplitude matches the theoretical expectation for the full line-of-sight ($z \lesssim 1100$).
+- **Geometry Enforcement**: The model unconditionally enforces $z_{min}=0$ (Observer at the box face) to ensure consistent physical coordinates for the lensing efficiency kernel.
+- **HMC/MCMC Stability**: Galaxy-only runs at low redshift ($z \sim 0.36$) utilize a safety clamp on the MCMC `step_size` (max 0.5) to maintain stability in the presence of high posterior curvature.
 
-**Realistic Lensing Noise:**
-- Uses the true Planck lensing noise spectrum from PR4.
-- Includes an option to **rescale the noise** to achieve a Signal-to-Noise Ratio (SNR) representative of the true data, accounting for the fact that the simulation covers only a small portion of the line of sight (for validation purposes).
-- This is handled by `compute_signal_capture_ratio` in `cmb_lensing.py`.
-
-**Automatic Field Size:** The angular size of the field is automatically calculated based on the physical box size and the observation redshift, ensuring the correct geometry for the lensing kernel.
-
-**Validation:** `scripts/check_box_size_impact.py` allows verifying the impact of box size on the lensing kernel coverage, in function of the redshift of observation.
-
-**Next step:** Inform the model of the missing lensing signal through a noise spectrum that accounts for the missing signal.
+**Validation:**
+- **Signal Coverage**: `scripts/plot_lensing_fraction.py` quantifies the fraction of the lensing signal contained within the box at various depths, demonstrating the necessity of the High-Z correction.
+- **Cross-Correlations**: Validated through the coherence and cross-power between the inferred galaxy and convergence fields.
 
 ---
 
 ## Next Steps
 
-1. **Field-level inference on real data** - Application to DESI LRG × Planck/ACT κ-maps
+1. **Phase-level inference on high-z lensing correction** - Extend the model to infer the phases of the high-redshift corrective convergence map.
+2. **Preconditioning for Joint Inference** - Incorporate CMB lensing terms into the MCLMC/MAMS preconditioning matrices for improved sampling efficiency.
+3. **Implement Lightcone for Galaxy Field** - Account for structure evolution and geometric projection within the simulation box (moving beyond the current snapshot/effective-redshift approximation).
+4. **Field-Level Inference on Real Data** - Application to joint DESI LRG $\times$ Planck/ACT $\kappa$-map datasets.
 
 Implementation details will be documented as development progresses.

@@ -1,56 +1,57 @@
 # Field-Level Inference Configuration
-# Based on benchmark-field-level paper (arXiv:2409.19049) MCLMC section
+# Based on benchmark-field-level paper (arXiv:2504.20130) MCLMC section
 
 # SLURM configuration for NERSC Perlmutter
 slurm:
-  job_name: fli-N_ell-reduced_noise
+  job_name: fli-N_ell-Highzcorrection-diagonal_preconditioning-gxyonly-stepsizezerodotfive
   account: desi
   qos: regular
   constraint: gpu
   nodes: 1
   gpus: 4
-  time: "08:00:00"
+  time: "12:00:00"
 
 # Model configuration
 model:
-  mesh_shape: [64, 64, 64]
-  box_shape: [960.0, 960.0, 960.0]  # Mpc/h (Resolution: 15 Mpc/h)
+  cell_size: 15.625    # Mpc/h. Mesh shape will be [1000/15.625, 1000/15.625, 2000/15.625] = [64, 64, 128]
+  box_shape: [1000.0, 1000.0, 2000.0]  # Mpc/h [Lx, Ly, Lz]
   evolution: lpt
   lpt_order: 2
-  a_obs: 0.571 # z = 0.75 = (0.4 + 1.1)/2 (LRG DESI range)
+  # a_obs [IGNORED] Derived automatically from box size (enforcing z_min=0)
   gxy_density: 0.0005 # LRG DESI gxy density
 
 # CMB lensing configuration
 cmb_lensing:
-  enabled: true
+  enabled: false
   z_source: 1100.0
   cmb_noise_nell: "/global/cfs/cdirs/cmb/data/planck2020/PR4_lensing/PR4_nlkk_p.dat"
-  use_reduced_noise_for_closure_test: true
+
+  full_los_correction: true
 
 # Truth parameters
 truth_params:
   Omega_m: 0.3
   sigma8: 0.8
-  b1: 1.5
+  b1: 1.2
   b2: 0.0
   bs2: 0.0
   bn2: 0.0
 
 # MCMC configuration
 mcmc:
-  num_warmup: 2048
+  num_warmup: 8192
 
   # Sampling
-  num_samples: 2048
-  num_batches: 80
+  num_samples: 500
+  num_batches: 15
   num_chains: 4
 
   save_large_fields: false
 
   mclmc:
     desired_energy_var: 0.0005
-    diagonal_preconditioning: false
-    thinning: 1
+    diagonal_preconditioning: true
+    thinning: 20
 
 # Random seed
 seed: 52

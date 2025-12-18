@@ -114,10 +114,18 @@ def plot_mesh(
     vmin, vmax = vlim
 
     # xx, yy = np.indices(mesh_shape[:2]) * (box_shape/mesh_shape)[:2,None,None]
-    xs, ys = (
-        np.linspace(0, box_shape[0], mesh_shape[0]),
-        np.linspace(0, box_shape[1], mesh_shape[1]),
-    )
+    # Determine remaining axes for 2D plot
+    ndim = mesh.ndim
+    if axis < 0:
+        axis += ndim
+    remain = [i for i in range(ndim) if i != axis]
+
+    # Get 2D dimensions
+    nx, ny = mesh_shape[remain[0]], mesh_shape[remain[1]]
+    Lx, Ly = box_shape[remain[0]], box_shape[remain[1]]
+
+    xs = np.linspace(0, Lx, nx)
+    ys = np.linspace(0, Ly, ny)
     xx, yy = np.meshgrid(xs, ys, indexing="ij")
     quad = plt.pcolormesh(xx, yy, mesh2d, vmin=vmin, vmax=vmax, **kwargs)
     plt.gca().set_aspect(1)
@@ -200,7 +208,7 @@ def anim_scan(
 ##################
 # Power Spectrum #
 ##################
-def plot_pow(ks, pow, *args, ell=None, log=False, fill=None, **kwargs):
+def plot_pow(ks, pow, *args, ell=None, log=False, fill=None, ylabel=None, **kwargs):
     if ell is None:
         sub = ""
     else:
@@ -215,7 +223,10 @@ def plot_pow(ks, pow, *args, ell=None, log=False, fill=None, **kwargs):
             scis = credint(pow, fill, axis=0)
             out = plt.fill_between(ks[0], *scis.T, *args, alpha=(1 - fill) ** 0.5, **kwargs)
             plt.xscale("log"), plt.yscale("log")
-        plt.ylabel("$P" + sub + "(k)$ [Mpc/$h$]$^3$")
+        if ylabel is None:
+            plt.ylabel("$P" + sub + "(k)$ [Mpc/$h$]$^3$")
+        else:
+            plt.ylabel(ylabel)
     else:
         if fill is None:
             out = plt.plot(ks, ks * pow, *args, **kwargs)
@@ -224,7 +235,10 @@ def plot_pow(ks, pow, *args, ell=None, log=False, fill=None, **kwargs):
             out = plt.fill_between(
                 ks[0], *(ks[0] * scis.T), *args, alpha=(1 - fill) ** 0.5, **kwargs
             )
-        plt.ylabel("$k P" + sub + "(k)$ [Mpc/$h$]$^2$")
+        if ylabel is None:
+            plt.ylabel("$k P" + sub + "(k)$ [Mpc/$h$]$^2$")
+        else:
+            plt.ylabel(ylabel)
     plt.xlabel("$k$ [$h$/Mpc]")
     return out
 

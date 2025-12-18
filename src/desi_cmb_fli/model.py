@@ -65,7 +65,7 @@ default_config = {
     "cmb_field_npix": None,  # Number of pixels for convergence map (None = match mesh_shape)
 
     "cmb_z_source": 1100.0,  # CMB last scattering surface
-    "use_reduced_noise_for_closure_test": False, # Enable reduced noise for closure test
+
     # Latents
     "precond": "kaiser_dyn",  # direct, fourier, kaiser, kaiser_dyn
     "latents": {
@@ -401,7 +401,8 @@ class FieldLevelModel(Model):
     cmb_field_npix: int | None = field(default=default_config["cmb_field_npix"])
     cmb_z_source: float = field(default=default_config["cmb_z_source"])
     cmb_enabled: bool = field(default=False)  # Explicit flag to enable CMB lensing
-    use_reduced_noise_for_closure_test: bool = field(default=False)
+
+    full_los_correction: bool = field(default=False)  # Enable high-z kappa correction (force z_min=0)
     # Latents (required, from default_config)
     precond: str = field(default=default_config["precond"])
     latents: dict = field(default_factory=lambda: default_config["latents"])
@@ -416,6 +417,27 @@ class FieldLevelModel(Model):
         self.mesh_shape = np.asarray(self.mesh_shape)
         # NOTE: if x32, cast mesh_shape into float32 to avoid int32 overflow when computing products
         self.box_shape = np.asarray(self.box_shape, dtype=float)
+
+        # Enforce z_min=0 globally (Observer at face)
+        # We assume the box starts at z=0 (chi=0) and extends to box_size[2].
+        # We need to find the a_obs that corresponds to the CENTER of the box.
+        target_chi = self.box_shape[2] / 2.0
+
+        # Invert chi(a) to find a_obs using fiducial cosmology
+        cosmo_fid = get_cosmology(**self.loc_fid)
+        # a_of_chi in jax_cosmo
+        self.a_obs = float(jc.background.a_of_chi(cosmo_fid, target_chi)[0])
+
+        # Calculate z_max for logging (chi_max = box_size[2])
+        chi_max_box = self.box_shape[2]
+        a_max = float(jc.background.a_of_chi(cosmo_fid, chi_max_box)[0])
+        z_max_box = 1/a_max - 1
+
+        print(f"  Box size: {self.box_shape} Mpc/h")
+        print(f"  Target center chi: {target_chi:.2f} Mpc/h")
+        print(f"  Computed a_obs: {self.a_obs:.4f} (z_center = {1/self.a_obs - 1:.4f})")
+        print(f"  Box extends to chi={chi_max_box:.2f} Mpc/h (z_max = {z_max_box:.4f})")
+
         self.cell_shape = self.box_shape / self.mesh_shape
         if self.los is not None:
             self.los = np.asarray(self.los)
@@ -436,8 +458,13 @@ class FieldLevelModel(Model):
                 print(f"CMB Field Size (Auto): {self.cmb_field_size_deg:.2f} deg (matched to box size)")
 
             if self.cmb_field_npix is None:
+                # Default to mesh resolution for computational efficiency
+                # High-res inference (e.g. 1.5 arcmin) is too expensive for current purpose
                 self.cmb_field_npix = int(self.mesh_shape[0])
-                print(f"CMB Field Pixels (Auto): {self.cmb_field_npix} (matched to mesh shape)")
+                print(f"CMB Field Pixels (Auto): {self.cmb_field_npix} (matched to mesh_shape)")
+
+                # Optional: We could use a multiplier (e.g. 2x) for anti-aliasing but let's keep it simple and fast
+                # self.cmb_field_npix = int(self.mesh_shape[0] * 2)
 
             # Calculate pixel scale in arcmin
             pixel_scale_deg = self.cmb_field_size_deg / self.cmb_field_npix
@@ -472,9 +499,10 @@ class FieldLevelModel(Model):
             # Meshgrid of ell values
             # fftn produces shape (N, N)
             lx, ly = np.meshgrid(freq_y, freq_x, indexing='ij')
-            ell_grid = np.sqrt(lx**2 + ly**2)
+            self.ell_grid = np.sqrt(lx**2 + ly**2)  # Store ell_grid for high-z calculation
 
             # Interpolate N_ell onto the grid
+
             # Use log-log interpolation for better stability with power spectra
             # Handle ell=0 separately or clip
             ell_in = np.asarray(ell_in)
@@ -486,33 +514,21 @@ class FieldLevelModel(Model):
             nell_in = nell_in[valid_mask]
 
             # Avoid log(0)
-            ell_grid_safe = np.maximum(ell_grid, 1e-5)
+            ell_grid_safe = np.maximum(self.ell_grid, 1e-5)
 
             # Interpolate in log space
             # We assume N_ell is provided for a sufficient range
             self.cmb_noise_power_k = np.exp(np.interp(np.log(ell_grid_safe), np.log(ell_in), np.log(nell_in)))
 
             # Handle ell=0 (DC mode) - set noise to infinity (variance to infinity) to ignore it
-            # or set to a very large number
-            self.cmb_noise_power_k[0, 0] = 1e30
+            self.cmb_noise_power_k[0, 0] = np.inf
 
             print("CMB Noise Model (N_ell):")
             print(f"  Input N_ell shape: {ell_in.shape}")
             print(f"  Interpolated grid shape: {self.cmb_noise_power_k.shape}")
             print(f"  Min/Max noise power: {self.cmb_noise_power_k.min():.2e} / {self.cmb_noise_power_k.max():.2e}")
 
-            # Apply noise reduction for closure test if requested
-            if self.use_reduced_noise_for_closure_test:
-                print("\n[CLOSURE TEST] Calculating noise reduction factor...")
-                ratio_k = self._compute_noise_scaling_ratio()
 
-                # Apply ratio to noise power
-                # N_ell_eff = N_ell * ratio
-                self.cmb_noise_power_k = self.cmb_noise_power_k * ratio_k
-
-                print("[CLOSURE TEST] Applied noise reduction.")
-                print(f"  Mean reduction factor: {np.mean(ratio_k):.4f}")
-                print(f"  Min/Max reduction: {ratio_k.min():.4f} / {ratio_k.max():.4f}")
 
     def __str__(self):
         out = ""
@@ -523,49 +539,12 @@ class FieldLevelModel(Model):
         out += f"k_funda:        {self.k_funda:.5f} h/Mpc\n"
         out += f"k_nyquist:      {self.k_nyquist:.5f} h/Mpc\n"
         out += f"mean_gxy_count: {self.gxy_count:.3f} gxy/cell\n"
-        if self.use_reduced_noise_for_closure_test:
-            out += "use_reduced_noise_for_closure_test: True\n"
+
+        if self.full_los_correction:
+            out += "full_los_correction: True\n"
         return out
 
-    def _compute_noise_scaling_ratio(self):
-        """
-        Compute R_ell = C_ell^box / C_ell^total to scale noise for closure tests.
-        Returns the ratio interpolated onto the 2D Fourier grid.
-        """
 
-        print("  Generating fiducial realization for noise scaling...")
-
-        # 1. Generate a realization of the box
-        # We use a fixed seed to be deterministic within the same run configuration
-        rng = jr.key(12345)
-
-        # Generate a single sample using predict with FIDUCIAL parameters
-        # We must use fiducial cosmology to match the theoretical C_ell used in the ratio
-        prediction = self.predict(rng=rng, samples=self.loc_fid, hide_det=False, hide_samp=False, frombase=True)
-
-        if "kappa_pred" not in prediction:
-             raise RuntimeError("Could not generate kappa_pred for noise scaling. Ensure cmb_enabled=True.")
-
-        kappa_box = prediction["kappa_pred"]
-
-        # 2. Call refactored function
-        from desi_cmb_fli.cmb_lensing import compute_signal_capture_ratio
-
-        # We need the fiducial cosmology
-        cosmo_fid = get_cosmology(**self.loc_fid)
-
-        ratio_2d, details = compute_signal_capture_ratio(
-            cosmo_fid,
-            kappa_box,
-            self.cmb_field_size_deg,
-            self.cmb_field_npix,
-            self.cmb_z_source,
-            return_details=True
-        )
-
-        self.noise_scaling_details = details
-
-        return ratio_2d
 
 
     def _model(self, temp_prior=1.0, temp_lik=1.0):
@@ -701,6 +680,58 @@ class FieldLevelModel(Model):
                     self.cmb_z_source,
                     box_center_chi=jc.background.radial_comoving_distance(cosmology, jnp.atleast_1d(self.a_obs))[0],
                 )
+
+                if self.full_los_correction:
+                    # Add high-z contribution
+                    # Integrate from chi_max_box to chi_source
+                    chi_min_hz = self.box_shape[2]
+                    # We need chi_source from THIS cosmology for consistency or generic?
+                    # Generally consistent with 'cosmology'
+
+                    from desi_cmb_fli.cmb_lensing import compute_high_z_cl
+
+                    # Compute chi_source for upper bound (consistent with cmb_z_source)
+                    chi_source_val = jc.background.radial_comoving_distance(cosmology, 1.0 / (1.0 + self.cmb_z_source))[0]
+
+                    # Compute Cl for missing z range
+                    cl_high_z = compute_high_z_cl(
+                        cosmology,
+                        self.ell_grid,
+                        chi_min_hz,
+                        chi_source_val, # Integrate up to source
+                        self.cmb_z_source
+                    )
+
+                    # Generate realization with FIXED seed
+                    # The seed should be fixed to treat this as a fixed "truth" or "background"
+                    rng_hz = jr.key(42)
+
+                    # Generate Gaussian field from Cl
+
+                    field_area_sr = (self.cmb_field_size_deg * jnp.pi / 180.0)**2
+                    npix2 = self.cmb_field_npix**2
+
+                    # Variance grid
+                    var_k_hz = cl_high_z * (npix2**2 / field_area_sr)
+
+                    # Handle DC mode or nulls
+                    var_k_hz = jnp.where(self.ell_grid < 1e-5, 0.0, var_k_hz)
+
+                    # Sample
+                    # We reuse FourierSpaceGaussian logic or similar:
+                    # White noise
+                    eps = jr.normal(rng_hz, shape=kappa_pred.shape)
+
+                    # Scale factor derived from FourierSpaceGaussian definition
+
+                    scale_hz = jnp.sqrt(var_k_hz) / self.cmb_field_npix
+                    kappa_hz_k = jnp.fft.fftn(eps) * scale_hz
+
+                    # Make real
+                    kappa_hz = jnp.fft.ifftn(kappa_hz_k).real
+
+                    # Add to prediction
+                    kappa_pred = kappa_pred + kappa_hz
 
                 # Squeeze if needed (single z_source)
                 if kappa_pred.ndim == 3 and kappa_pred.shape[0] == 1:

@@ -14,8 +14,7 @@ from pathlib import Path
 import jax
 import jax.numpy as jnp
 import numpy as np
-import yaml
-from getdist import MCSamples, plots
+from getdist import plots
 
 from desi_cmb_fli.chains import Chains
 from desi_cmb_fli.model import FieldLevelModel, default_config
@@ -33,9 +32,10 @@ def load_and_process(run_dir, label):
 
     print(f"\nProcessing {label}: {run_dir}")
 
+    from desi_cmb_fli import utils
+
     # Load config
-    with open(config_dir / "config.yaml") as f:
-        cfg = yaml.safe_load(f)
+    cfg = utils.yload(config_dir / "config.yaml")
 
     # Load samples (scalars)
     samples_path = config_dir / "samples.npz"
@@ -85,20 +85,8 @@ def load_and_process(run_dir, label):
     comp_params = ["Omega_m", "sigma8", "b1", "b2", "bs2", "bn2"]
     available_params = [p for p in comp_params if p in physical_samples]
 
-    gd_samples = []
-    num_chains = physical_samples[available_params[0]].shape[0]
-
-    for c in range(num_chains):
-        chain_data = []
-        for p in available_params:
-            chain_data.append(physical_samples[p][c, :])
-        chain_data = np.column_stack(chain_data)
-        gd_samples.append(chain_data)
-
     # Create MCSamples
-    # ignore_rows=0.5 for 50% burn-in
-    samples_gd = MCSamples(samples=gd_samples, names=available_params, labels=available_params,
-                           label=label, settings={'ignore_rows': 0.5})
+    samples_gd = physical_chains.to_getdist(label=label)
 
     return samples_gd, truth_params, available_params
 
