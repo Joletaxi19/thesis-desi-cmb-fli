@@ -204,7 +204,7 @@ def test_logpdf_gradient_finite_difference():
 
     # Test point
     key = jr.key(123)
-    init_mesh = jr.normal(key, (16, 16, 9))  # rfft shape for 16^3 mesh
+    init_mesh = jr.normal(key, (16, 16, 16))  # Real space mesh (will be converted by rg2cgh)
     test_params = {
         "Omega_m_": 0.0, "sigma8_": 0.0,
         "b1_": 0.0, "b2_": 0.0, "bs2_": 0.0, "bn2_": 0.0,
