@@ -34,7 +34,7 @@ All scripts are configured via YAML files in `configs/<script_name>/config.yaml`
 
 ```bash
 # Example : CMB lensing joint inference
-./configs/05_cmb_lensing/submit.py
+./configs/inference/submit.py
 ```
 
 The submit script reads the YAML configuration and submits the job with appropriate SLURM parameters.
@@ -61,6 +61,20 @@ source /global/common/software/desi/users/adematti/perlmutter/cosmodesiconda/202
 conda activate ${SCRATCH}/envs/desi-cmb-fli
 export LD_LIBRARY_PATH=$(echo ${CONDA_PREFIX}/lib/python3.11/site-packages/nvidia/*/lib | tr ' ' ':'):${LD_LIBRARY_PATH}
 python -c "import jax; print(jax.devices())"  # Should show [CudaDevice(id=0), ...]
+```
+
+### Interactive job (for debugging)
+
+```bash
+salloc --nodes 1 --qos interactive --time 00:04:00 --constraint gpu --gpus 4 --account=desi
+module load cudatoolkit/12.4
+source /global/common/software/desi/users/adematti/perlmutter/cosmodesiconda/20251214-1.0.0/conda/etc/profile.d/conda.sh
+conda activate ${SCRATCH}/envs/desi-cmb-fli
+export LD_LIBRARY_PATH=$(echo ${CONDA_PREFIX}/lib/python3.11/site-packages/nvidia/*/lib | tr ' ' ':'):${LD_LIBRARY_PATH}
+python -c "import jax; print(jax.devices())"  # Should show [CudaDevice(id=0), ...]
+
+# Launch job directly
+python scripts/run_inference.py --config configs/inference/config.yaml
 ```
 
 ## Storage

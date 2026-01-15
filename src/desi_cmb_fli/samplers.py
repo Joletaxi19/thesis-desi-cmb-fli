@@ -302,7 +302,7 @@ def mclmc_warmup(
     if config is None:
         n_dim = len(ravel_pytree(state.position)[0])
         config = MCLMCAdaptationState(
-            n_dim**0.5, n_dim**0.5 / 4, inverse_mass_matrix=jnp.ones(n_dim)
+            n_dim**0.5, n_dim**0.5 / 10000, inverse_mass_matrix=jnp.ones(n_dim)
         )
 
     elif isinstance(config, dict):
@@ -348,7 +348,7 @@ def mclmc_warmup(
             frac_tune2=frac_tune2,
             frac_tune3=frac_tune3,
             num_effective_samples=256,  # NOTE: higher value implies slower averaging rate
-            # TODO: add config as first guess (next blackjax update)
+            params=config,
         )
         debug.print("Performed {n_steps_tot} adaptation steps", n_steps_tot=n_steps_tot)
 

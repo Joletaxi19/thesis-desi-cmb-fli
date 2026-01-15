@@ -10,7 +10,7 @@ from pathlib import Path
 import yaml
 
 # Load config
-config_path = Path("configs/05_cmb_lensing/config.yaml")
+config_path = Path("configs/inference/config.yaml")
 with open(config_path) as f:
     cfg = yaml.safe_load(f)
 
@@ -42,7 +42,7 @@ if slurm["constraint"] == "gpu":
     cmd.append(f"--gpus={slurm['gpus']}")
 
 # The actual script to run, passing the specific config file
-cmd.append("configs/05_cmb_lensing/run.sbatch")
+cmd.append("configs/inference/run.sbatch")
 cmd.append(str(job_config_path))
 
 # Submit

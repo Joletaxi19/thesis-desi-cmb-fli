@@ -147,6 +147,51 @@ def spectrum(
         return kavg, pow
 
 
+def get_cl_2d(map1, map2=None, field_size_deg=1.0, comp=(0, 0)):
+    """
+    Compute 2D angular power spectrum C_l.
+
+    Parameters
+    ----------
+    map1 : array
+        First map (Nx, Ny)
+    map2 : array, optional
+        Second map (Nx, Ny). If None, computes auto-spectrum of map1.
+    field_size_deg : float
+        Field size in degrees.
+    comp : tuple
+        Deconvolution order for paint_kernel. Defaults to (0, 0) (No deconvolution).
+        Note: Maps generated via linear interpolation (CIC) will show window function
+        suppression at high ell. This is expected and not corrected here.
+
+    Returns
+    -------
+    k : array
+        Wavenumbers (ell)
+    cl : array
+        Power spectrum C_l
+    """
+    field_size_rad = field_size_deg * np.pi / 180.0
+
+    # Ensure inputs are 3D for spectrum function: (Nx, Ny, 1)
+    m1 = map1
+    if m1.ndim == 2:
+        m1 = jnp.expand_dims(m1, axis=-1)
+
+    m2 = map2
+    if m2 is not None and m2.ndim == 2:
+        m2 = jnp.expand_dims(m2, axis=-1)
+
+    box_shape = (field_size_rad, field_size_rad, 1.0)
+
+    nx = map1.shape[0]
+    ell_nyquist = np.pi * nx / field_size_rad
+    kedges = np.geomspace(10, ell_nyquist, 50)
+
+    k, cl = spectrum(m1, m2, box_shape=box_shape, kedges=list(kedges), comp=comp)
+    return k, cl
+
+
 def transfer(mesh0, mesh1, box_shape, kedges: int | float | list = None, comp=(False, False)):
     if isinstance(comp, int):
         comp = (comp, comp)

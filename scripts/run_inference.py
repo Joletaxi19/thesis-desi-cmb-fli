@@ -27,7 +27,7 @@ import numpyro
 from blackjax.adaptation.mclmc_adaptation import MCLMCAdaptationState
 from jax import jit, pmap, tree
 
-from desi_cmb_fli import cmb_lensing, plot, utils
+from desi_cmb_fli import cmb_lensing, metrics, plot, utils
 from desi_cmb_fli.bricks import get_cosmology
 from desi_cmb_fli.chains import Chains
 from desi_cmb_fli.model import FieldLevelModel, default_config
@@ -37,7 +37,7 @@ jax.config.update("jax_enable_x64", True)
 
 # Parse args
 parser = argparse.ArgumentParser()
-parser.add_argument("--config", default="configs/04_field_level_inference/config.yaml")
+parser.add_argument("--config", default="configs/inference/config.yaml")
 args = parser.parse_args()
 
 # Load config
@@ -48,7 +48,8 @@ cfg = utils.yload(args.config)
 scratch_dir = os.environ.get("SCRATCH", "/pscratch/sd/j/jhawla")
 start_time = datetime.now()
 timestamp = start_time.strftime("%Y%m%d_%H%M%S")
-run_dir = Path(scratch_dir) / "outputs" / f"run_{timestamp}"
+job_id = os.environ.get("SLURM_JOB_ID", "local")
+run_dir = Path(scratch_dir) / "outputs" / f"run_{timestamp}_{job_id}"
 fig_dir = run_dir / "figures"
 config_dir = run_dir / "config"
 for d in [fig_dir, config_dir]:
@@ -264,34 +265,6 @@ if cmb_enabled and "kappa_obs" in truth:
     # =========================================================================
     print("\nComputing Diagnostic Power Spectra C_l...")
 
-    from desi_cmb_fli.metrics import spectrum
-
-    def get_cl_2d(map1, map2=None, field_size_deg=1.0):
-        """Compute 2D angular power spectrum C_l."""
-        # Convert to radians
-        field_size_rad = field_size_deg * np.pi / 180.0
-
-        # Reshape to (N, N, 1) for 3D spectrum function
-        m1 = jnp.expand_dims(map1, axis=-1)
-        m2 = jnp.expand_dims(map2, axis=-1) if map2 is not None else None
-
-        # Use box depth 1.0 (arbitrary)
-        box_shape = (field_size_rad, field_size_rad, 1.0)
-
-        # Calculate manual kedges to ensure we cover the transverse scales
-        # k_max ~ pi * N / L
-        # We want bins up to this k_max
-        nx = map1.shape[0]
-        ell_nyquist = np.pi * nx / field_size_rad
-
-        # 50 logarithmic bins from l=10 to l_nyquist
-        kedges = np.geomspace(10, ell_nyquist, 50)
-
-        # Compute spectrum
-        k, cl = spectrum(m1, m2, box_shape=box_shape, kedges=list(kedges))
-
-        return k, cl
-
     # 1. Reconstruct kappa_box (without high-z correction)
     print("  Reconstructing Box-Only Kappa...")
     kappa_box = cmb_lensing.density_field_to_convergence(
@@ -305,38 +278,58 @@ if cmb_enabled and "kappa_obs" in truth:
     )
     if kappa_box.ndim == 3 and kappa_box.shape[0] == 1:
         kappa_box = kappa_box.squeeze(0)
+    kappa_box = jnp.asarray(kappa_box, dtype=jnp.float64)  # Match dtype with kappa_pred
 
-    # 2. Identify fields
-    kappa_total = truth['kappa_pred'] # Signal (Box + High-Z if corrected)
+    # 2. Identify fields (Note: kappa_pred = box signal only. High-z goes into likelihood variance, not signal)
+    kappa_total = truth['kappa_pred']
     kappa_obs = truth['kappa_obs']    # Signal + Noise
 
     # 3. Compute Spectra
     field_size = model.cmb_field_size_deg
 
     # Kappa Auto-correlations
-    ell, cl_kk_box = get_cl_2d(kappa_box, field_size_deg=field_size)
-    _, cl_kk_total = get_cl_2d(kappa_total, field_size_deg=field_size)
-    _, cl_kk_obs = get_cl_2d(kappa_obs, field_size_deg=field_size)
+    ell, cl_kk_box = metrics.get_cl_2d(kappa_box, field_size_deg=field_size)
+    _, cl_kk_obs = metrics.get_cl_2d(kappa_obs, field_size_deg=field_size)
 
     # Galaxy Auto-correlation
     gxy_mean = jnp.mean(gxy_proj)
     gxy_delta = (gxy_proj - gxy_mean) / gxy_mean
-    _, cl_gg = get_cl_2d(gxy_delta, field_size_deg=field_size)
+    _, cl_gg = metrics.get_cl_2d(gxy_delta, field_size_deg=field_size)
 
     # Kappa-Galaxy Cross-correlation
-    _, cl_kg = get_cl_2d(kappa_total, gxy_delta, field_size_deg=field_size)
+    _, cl_kg = metrics.get_cl_2d(kappa_box, gxy_delta, field_size_deg=field_size)
 
-    # 4. Plot (Grouped Logic)
+    # 3.5 Compute Theoretical Spectra
+    print("  Computing theoretical spectra (Limber)...")
+    from desi_cmb_fli.cmb_lensing import (
+        compute_theoretical_cl_gg,
+        compute_theoretical_cl_kappa,
+        compute_theoretical_cl_kg,
+    )
+
+    chi_min = 1.0  # Small positive value to avoid div by 0 in Limber
+    chi_max = float(model.box_shape[2])
+    z_source = model.cmb_z_source
+    b1 = truth_params.get("b1", 1.0)
+
+    # Use a clean ell grid for theory (measured ell may have NaN from empty bins)
+    ell_clean = np.geomspace(10, 2000, 100)
+    cl_kk_theory = compute_theoretical_cl_kappa(cosmo_val, jnp.array(ell_clean), chi_min, chi_max, z_source)
+    cl_gg_theory = compute_theoretical_cl_gg(cosmo_val, jnp.array(ell_clean), chi_min, chi_max, b1)
+    cl_kg_theory = compute_theoretical_cl_kg(cosmo_val, jnp.array(ell_clean), chi_min, chi_max, z_source, b1)
+
+    # 4. Interpolate N_l to ell_clean (reuse ell_in/nell_in from noise plot above)
+    nell_at_ell_clean = np.interp(ell_clean, ell_in, nell_in)
+
+    # 5. Plot (Grouped Logic)
     fig, axes = plt.subplots(1, 2, figsize=(14, 6))
 
     # --- SUBPLOT 1: Kappa Auto ---
     plt.sca(axes[0])
-    plot.plot_pow(ell, cl_kk_box, label=r"$C_\ell^{\kappa \kappa}$ (Box Only)", color='blue', ls='--', log=True, ylabel=r"$C_\ell$")
-
-    if model.full_los_correction:
-        plot.plot_pow(ell, cl_kk_total, label=r"$C_\ell^{\kappa \kappa}$ (Total Signal)", color='blue', log=True, ylabel=r"$C_\ell$")
-
+    plot.plot_pow(ell, cl_kk_box, label=r"$C_\ell^{\kappa \kappa}$ (Measured)", color='blue', log=True, ylabel=r"$C_\ell$")
     plot.plot_pow(ell, cl_kk_obs, label=r"$C_\ell^{\kappa \kappa}$ (Observed)", color='gray', alpha=0.5, log=True, ylabel=r"$C_\ell$")
+    plt.plot(ell_clean, np.array(cl_kk_theory), '--', color='blue', alpha=0.8, lw=2, label=r"$C_\ell^{\kappa \kappa}$ (Theory)")
+    plt.plot(ell_clean, np.array(cl_kk_theory) + nell_at_ell_clean, '--', color='gray', alpha=0.8, lw=2, label=r"Theory + $N_\ell$")
 
     plt.xlabel(r"Multipole $\ell$")
     plt.title(r"CMB Convergence Auto-Spectra ($C_\ell^{\kappa \kappa}$)")
@@ -345,11 +338,12 @@ if cmb_enabled and "kappa_obs" in truth:
 
     # --- SUBPLOT 2: Galaxy & Cross ---
     plt.sca(axes[1])
-    plot.plot_pow(ell, cl_gg, label=r"$C_\ell^{gg}$ (Galaxy $\delta$)", color='green', log=True, ylabel=r"$C_\ell$")
-    plot.plot_pow(ell, np.abs(cl_kg), label=r"|$C_\ell^{\kappa g}$| (Cross)", color='red', log=True, ylabel=r"$C_\ell$")
+    plot.plot_pow(ell, cl_gg, label=r"$C_\ell^{gg}$ (Measured)", color='green', log=True, ylabel=r"$C_\ell$")
+    plot.plot_pow(ell, np.abs(cl_kg), label=r"|$C_\ell^{\kappa g}$| (Measured)", color='red', log=True, ylabel=r"$C_\ell$")
+    plt.plot(ell_clean, np.array(cl_gg_theory), '--', color='green', alpha=0.8, lw=2, label=r"$C_\ell^{gg}$ (Theory)")
+    plt.plot(ell_clean, np.abs(np.array(cl_kg_theory)), '--', color='red', alpha=0.8, lw=2, label=r"|$C_\ell^{\kappa g}$| (Theory)")
 
     plt.xlabel(r"Multipole $\ell$")
-    # plt.ylabel(r"$C_\ell$") # Shared y-label or separate? Separate is safer as units might differ conceptually
     plt.title(r"Galaxy Auto & Cross Spectra")
     plt.legend()
     plt.grid(True, which="both", ls="-", alpha=0.2)
@@ -456,6 +450,7 @@ model.condition(condition_dict)
 model.block()
 
 print(f"Warming all params ({num_warmup} steps)...")
+print(f"  Initial scalar params: fiducial (Omega_m={model.loc_fid['Omega_m']:.4f}, sigma8={model.loc_fid['sigma8']:.4f}, b1={model.loc_fid['b1']:.2f}, ...)")
 warmup_all_fn = pmap(jit(get_mclmc_warmup(
     model.logpdf,
     n_steps=num_warmup,
@@ -467,8 +462,13 @@ warmup_all_fn = pmap(jit(get_mclmc_warmup(
 state, config = warmup_all_fn(jr.split(jr.key(43), num_chains), init_params_)
 
 print("✓ Full warmup done")
-median_L_adapted = float(jnp.median(config.L))
-median_ss = float(jnp.median(config.step_size))
+
+# Save raw per-chain values
+raw_L = jnp.array(config.L)
+raw_step_size = jnp.array(config.step_size)
+
+median_L_adapted = float(jnp.median(raw_L))
+median_ss = float(jnp.median(raw_step_size))
 median_imm = jnp.median(config.inverse_mass_matrix, axis=0)
 print(f"  Logdens (median): {float(jnp.median(state.logdensity)):.2f}")
 print(f"  Adapted L (median): {median_L_adapted:.6f}")
@@ -478,15 +478,6 @@ if median_ss < 1.0:
     print("\n⚠️  WARNING: Step size is very small! This indicates poor conditioning or mixing issues.")
     print("   Check if diagonal_preconditioning is enabled or if priors are too tight.")
 
-
-# Safety clamp for Galaxy-Only runs (which can be unstable at z~0.3 with large steps)
-if not cmb_enabled:
-    safe_ss_max = 0.5
-    if median_ss > safe_ss_max:
-        print(f"\n⚠️  [Auto-Correction] Galaxy-Only run detected with large step size ({median_ss:.2f}).")
-        print(f"   Capping step_size to {safe_ss_max} to prevent numerical instability.")
-        print("   (Note: This reduces the physical trajectory length L to ensure stability, potentially increasing autocorrelation.)")
-        median_ss = safe_ss_max
 
 # Recalculate L (benchmark approach)
 eval_per_ess = 1e3
@@ -502,6 +493,47 @@ utils.ydump(
     {"L": recalc_L, "step_size": median_ss, "eval_per_ess": eval_per_ess},
     config_dir / "warmup_config.yaml",
 )
+
+# ========================
+# WARMUP VALIDATION TESTS
+# ========================
+print("\n" + "=" * 80)
+print("WARMUP VALIDATION")
+print("=" * 80)
+
+# Test 1: Step size consistency across chains
+ss_std = float(jnp.std(raw_step_size))
+ss_mean = float(jnp.mean(raw_step_size))
+ss_rel_std = ss_std / ss_mean if ss_mean > 0 else float('inf')
+print("\n1. Step Size:")
+print(f"   Values: {raw_step_size}")
+print(f"   Mean: {ss_mean:.6f}, Std: {ss_std:.6f}, Rel Std: {ss_rel_std:.4f}")
+if ss_rel_std < 0.1:
+    print("   ✓ PASS: Step sizes consistent across chains (< 10% relative std)")
+else:
+    print("   ⚠️  WARN: Step sizes vary significantly across chains")
+
+# Test 2: Logdensity spread (info only - expected to vary after warmup)
+logdens = jnp.array(state.logdensity)
+ld_std = float(jnp.std(logdens))
+print("\n2. Logdensity Spread:")
+print(f"   Values: {logdens}")
+print(f"   Std: {ld_std:.2f}")
+
+# Test 3: Post-warmup scalar params (physical values) vs truth
+print("\n3. Scalar Parameters (post-warmup, physical values vs truth):")
+truth_params = cfg.get("truth_params", {})
+for param in ["Omega_m_", "sigma8_", "b1_", "b2_", "bs2_", "bn2_"]:
+    if param in state.position:
+        base_name = param.rstrip("_")
+        latent = default_config["latents"].get(base_name, {})
+        loc_fid = latent.get("loc_fid", latent.get("loc", 0.0))
+        scale_fid = latent.get("scale_fid", 1.0)
+        sample_vals = jnp.array(state.position[param])
+        physical_vals = loc_fid + sample_vals * scale_fid
+        truth = truth_params.get(base_name, "?")
+        print(f"   {base_name}: {physical_vals} (truth: {truth})")
+
 
 # STEP 3: Multi-Chain Mini-Batch Sampling
 print("\n" + "=" * 80)
@@ -571,9 +603,28 @@ for batch_idx in range(num_batches):
     jnp.savez(config_dir / f"samples_batch_{batch_idx}.npz", **batch_content)
 
     print(f"  ✓ {num_samples} samples × {num_chains} chains")
-    print(f"  MSE/dim (median): {float(jnp.median(samples_dict['mse_per_dim'])):.6e}")
+
+    # Show MSE per dim for EACH chain
+    mse_per_chain = jnp.mean(samples_dict['mse_per_dim'], axis=1)  # shape: (num_chains,)
+    print(f"  MSE/dim per chain: {mse_per_chain}")
+    print(f"  MSE/dim (median):  {float(jnp.median(mse_per_chain)):.6e}")
     print(f"  Logdensity (median): {float(jnp.median(state.logdensity)):.2f}")
     print(f"  Saved: samples_batch_{batch_idx}.npz")
+
+    # Energy variance validation on first batch
+    if batch_idx == 0:
+        for i, mse_val in enumerate(mse_per_chain):
+            ratio = float(mse_val) / desired_energy_var
+            status = "✓" if ratio < 2.0 else "⚠️"
+            print(f"\n  📊 Chain {i} Energy Variance: {float(mse_val):.2e} (ratio: {ratio:.2f}) {status}")
+
+        median_mse = float(jnp.median(mse_per_chain))
+        median_ratio = median_mse / desired_energy_var
+        print(f"\n  📊 Overall (median): {median_mse:.2e}, Desired: {desired_energy_var:.2e}, Ratio: {median_ratio:.2f}")
+        if median_ratio < 2.0:
+            print("     ✓ PASS: Energy variance matches desired")
+        else:
+            print(f"     ⚠️  WARN: Ratio = {median_ratio:.1f}x - consider reducing desired_energy_var")
 
     # Explicitly delete large arrays to free memory
     del batch_large, batch_content, batch_scalars

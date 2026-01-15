@@ -10,7 +10,7 @@ Repository for a thesis project targeting **field-level inference (FLI)** on DES
 
 ## Code Attribution
 
-This repository builds upon the [benchmark-field-level](https://github.com/hsimonfroy/benchmark-field-level) framework by Hugo Simonfroy.
+This repository builds upon the [benchmark-field-level](https://github.com/hsimonfroy/benchmark-field-level) framework by Hugo Simon.
 
 The `cmb_lensing.py` module is built upon the implementation by François Lanusse (see [repository](https://github.com/EiffL/LPTLensingComparison/blob/c407fdc8c70ebc37bd213be4e79eadd3a619d848/jax_lensing/model.py)).
 

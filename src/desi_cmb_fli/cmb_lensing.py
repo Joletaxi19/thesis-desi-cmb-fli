@@ -67,7 +67,10 @@ def convergence_Born(cosmo,
         plane = (plane - 1.0) * constant_factor * density_normalization
 
         nx = density_field.shape[0]
-        pixel_coords = coords * r_planes[i] / dx + nx / 2.0
+        # Gnomonic projection: x_phys = r * tan(theta)
+        # coords are in radians
+        # pixel_coords = (x_phys / dx) + nx/2
+        pixel_coords = jnp.tan(coords) * r_planes[i] / dx + nx / 2.0
         im = map_coordinates(plane, pixel_coords, order=1, mode="wrap")
 
         # Weight by lensing kernel: (1 - r/r_s)
@@ -228,9 +231,9 @@ def project_flat_sky(field,
     for i in range(mesh_shape[2]):
         r = r_planes[i]
         # Map angular coords to pixel coords in the box at distance r
-        # x_phys = theta * r
+        # Gnomonic projection: x_phys = r * tan(theta)
         # x_pix = x_phys / dx + center_pix
-        pixel_coords = coords * r / dx + mesh_shape[0] / 2.0
+        pixel_coords = np.tan(coords) * r / dx + mesh_shape[0] / 2.0
 
         # Extract slice
         plane = field[:, :, i]
@@ -245,9 +248,9 @@ def project_flat_sky(field,
     return projection
 
 
-def compute_high_z_cl(cosmo, ell, chi_min, chi_max, z_source, n_steps=100):
+def compute_theoretical_cl_kappa(cosmo, ell, chi_min, chi_max, z_source, n_steps=100):
     """
-    Compute Cl of convergence for a specific range of comoving distance [chi_min, chi_max].
+    Compute theoretical C_l^{kappa kappa} for convergence between two comoving distance bounds.
     Uses Limber approximation and nonlinear matter power spectrum.
 
     Parameters
@@ -286,11 +289,8 @@ def compute_high_z_cl(cosmo, ell, chi_min, chi_max, z_source, n_steps=100):
     # Scale factor and redshift at integration points
     a = jc.background.a_of_chi(cosmo, chi)
 
-    # Lensing efficiency Kernel W(chi)
-    # kappa = integral W(chi) * delta * dchi
-    # W(chi) = (3/2 Omega_m (H0/c)^2) * (chi/a) * (chi_s - chi)/chi_s
+    # Lensing kernel W(chi) = (3/2 Omega_m (H0/c)^2) * (chi/a) * (chi_s - chi)/chi_s
     constant_factor = 1.5 * cosmo.Omega_m * (constants.H0 / constants.c)**2
-
     w_val = constant_factor * (chi / a) * (chi_s - chi) / chi_s
     w_val = jnp.where(chi < chi_s, w_val, 0.0)
 
@@ -298,14 +298,9 @@ def compute_high_z_cl(cosmo, ell, chi_min, chi_max, z_source, n_steps=100):
         # Limber approximation: k = (ell + 0.5) / chi
         k = (ell + 0.5) / chi
 
-        # Power spectrum P(k, z)
-        # We need P(k_i, a_i) element-wise along the integration path.
-        # jax_cosmo.power.nonlinear_matter_power tries to broadcast k and a, which can fail or produce 2D arrays.
-        # We explicitly vmap over the integration steps to ensure 1D output.
+        # P(k, z) element-wise along integration path
         def get_pk_elementwise(ki, ai):
-             # Pass scalars directly; vmap handles the loop.
-             # If jax_cosmo returns a 0-d array, that's fine.
-             return jnp.squeeze(jc.power.nonlinear_matter_power(cosmo, ki, ai))
+            return jnp.squeeze(jc.power.nonlinear_matter_power(cosmo, ki, ai))
 
         pk = jax.vmap(get_pk_elementwise)(k, a)
 
@@ -313,17 +308,11 @@ def compute_high_z_cl(cosmo, ell, chi_min, chi_max, z_source, n_steps=100):
         integrand = (w_val**2 / chi**2) * pk
 
         # Trapezoidal integration
-        # Manual implementation for uniform grid
         dx = chi[1] - chi[0]
-        # trapezoid sum = sum(y) - 0.5*(y[0] + y[-1])
         return (jnp.sum(integrand) - 0.5 * (integrand[0] + integrand[-1])) * dx
 
-    # Always compute on 1D grid and interpolate for efficiency
-    # This prevents recomputing physics for millions of pixels
-    # Stop gradient on input ell to prevent unnecessary tracing/VJP issues
+    # Compute on 1D grid and interpolate
     ell = jax.lax.stop_gradient(ell)
-
-    # Always compute on 1D grid and interpolate for efficiency
     ell_min = jnp.min(ell)
     ell_max = jnp.max(ell)
 
@@ -332,10 +321,97 @@ def compute_high_z_cl(cosmo, ell, chi_min, chi_max, z_source, n_steps=100):
     ell_interp = jnp.linspace(ell_min, ell_max, n_interp)
     ell_interp = jax.lax.stop_gradient(ell_interp)
 
-    # Vectorize physics calculation over 1D grid (depends on cosmo)
     cl_interp = jax.vmap(get_cl_per_ell)(ell_interp)
-
-    # Interpolate to full shape
-    # stop_gradient on ell ensures we don't differentiate w.r.t coordinates
     cl_interp = jnp.squeeze(cl_interp)
     return jnp.interp(ell, ell_interp, cl_interp)
+
+
+def compute_theoretical_cl_gg(cosmo, ell, chi_min, chi_max, b1, n_steps=100):
+    """
+    Compute theoretical C_l^{gg} for galaxies using Limber approximation.
+
+    Assumes galaxies are uniformly distributed between chi_min and chi_max.
+
+    Parameters
+    ----------
+    cosmo : jax_cosmo.Cosmology
+    ell : array
+        Ell values to compute Cl for.
+    chi_min : float
+        Minimum comoving distance (Mpc/h)
+    chi_max : float
+        Maximum comoving distance (Mpc/h)
+    b1 : float
+        Linear galaxy bias
+    n_steps : int
+        Number of integration steps
+
+    Returns
+    -------
+    cl : array
+        Galaxy C_l values.
+    """
+    chi = jnp.linspace(chi_min, chi_max, n_steps)
+    a = jc.background.a_of_chi(cosmo, chi)
+
+    # Galaxy kernel: uniform distribution, normalized
+    delta_chi = chi_max - chi_min
+    w_g = b1 / delta_chi
+
+    def get_cl_per_ell(ell_val):
+        k = (ell_val + 0.5) / chi
+        pk = jax.vmap(lambda ki, ai: jnp.squeeze(jc.power.nonlinear_matter_power(cosmo, ki, ai)))(k, a)
+        integrand = (w_g**2 / chi**2) * pk
+        dx = chi[1] - chi[0]
+        return (jnp.sum(integrand) - 0.5 * (integrand[0] + integrand[-1])) * dx
+
+    return jax.vmap(get_cl_per_ell)(ell)
+
+
+def compute_theoretical_cl_kg(cosmo, ell, chi_min, chi_max, z_source, b1, n_steps=100):
+    """
+    Compute theoretical C_l^{kappa g} cross-spectrum using Limber approximation.
+
+    Parameters
+    ----------
+    cosmo : jax_cosmo.Cosmology
+    ell : array
+        Ell values to compute Cl for.
+    chi_min : float
+        Minimum comoving distance (Mpc/h)
+    chi_max : float
+        Maximum comoving distance (Mpc/h)
+    z_source : float
+        Source redshift for lensing
+    b1 : float
+        Linear galaxy bias
+    n_steps : int
+        Number of integration steps
+
+    Returns
+    -------
+    cl : array
+        Cross-spectrum C_l values.
+    """
+    chi_s = jc.background.radial_comoving_distance(cosmo, 1.0 / (1.0 + z_source))[0]
+
+    chi = jnp.linspace(chi_min, chi_max, n_steps)
+    a = jc.background.a_of_chi(cosmo, chi)
+
+    # Lensing kernel
+    constant_factor = 1.5 * cosmo.Omega_m * (constants.H0 / constants.c)**2
+    w_kappa = constant_factor * (chi / a) * (chi_s - chi) / chi_s
+    w_kappa = jnp.where(chi < chi_s, w_kappa, 0.0)
+
+    # Galaxy kernel
+    delta_chi = chi_max - chi_min
+    w_g = b1 / delta_chi
+
+    def get_cl_per_ell(ell_val):
+        k = (ell_val + 0.5) / chi
+        pk = jax.vmap(lambda ki, ai: jnp.squeeze(jc.power.nonlinear_matter_power(cosmo, ki, ai)))(k, a)
+        integrand = (w_kappa * w_g / chi**2) * pk
+        dx = chi[1] - chi[0]
+        return (jnp.sum(integrand) - 0.5 * (integrand[0] + integrand[-1])) * dx
+
+    return jax.vmap(get_cl_per_ell)(ell)

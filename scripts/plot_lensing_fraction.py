@@ -3,7 +3,7 @@ import jax.numpy as jnp
 import jax_cosmo as jc
 import matplotlib.pyplot as plt
 
-from desi_cmb_fli.cmb_lensing import compute_high_z_cl
+from desi_cmb_fli.cmb_lensing import compute_theoretical_cl_kappa
 
 
 def plot_fraction_vs_depth():
@@ -24,7 +24,7 @@ def plot_fraction_vs_depth():
 
     # 3. Compute Total Cl (0 -> z_source) for reference
     print("Computing Total Cl...")
-    cl_tot = compute_high_z_cl(cosmo, ell_arr, chi_min=1.0, chi_max=14000.0, z_source=z_source, n_steps=512)
+    cl_tot = compute_theoretical_cl_kappa(cosmo, ell_arr, chi_min=1.0, chi_max=14000.0, z_source=z_source, n_steps=512)
     cl_tot = jnp.where(cl_tot <= 0, 1e-30, cl_tot)
 
     # 4. Loop over depths
@@ -32,7 +32,7 @@ def plot_fraction_vs_depth():
 
     print("Computing Fractions vs Box Depth...")
     for i, chi_max in enumerate(chi_max_list):
-        cl_box = compute_high_z_cl(cosmo, ell_arr, chi_min=1.0, chi_max=chi_max, z_source=z_source, n_steps=256)
+        cl_box = compute_theoretical_cl_kappa(cosmo, ell_arr, chi_min=1.0, chi_max=chi_max, z_source=z_source, n_steps=256)
 
         # Ratio of AMPLITUDES (sqrt of power ratio)
         ratio = jnp.sqrt(cl_box / cl_tot)
@@ -96,10 +96,10 @@ def plot_spectra_comparison():
 
     # 3. Compute Spectra
     print("  Computing C_l (Box)...")
-    cl_box = compute_high_z_cl(cosmo, ell_plot, chi_min=1.0, chi_max=chi_box, z_source=z_source, n_steps=512)
+    cl_box = compute_theoretical_cl_kappa(cosmo, ell_plot, chi_min=1.0, chi_max=chi_box, z_source=z_source, n_steps=512)
 
     print("  Computing C_l (Total)...")
-    cl_total = compute_high_z_cl(cosmo, ell_plot, chi_min=1.0, chi_max=chi_total, z_source=z_source, n_steps=1024)
+    cl_total = compute_theoretical_cl_kappa(cosmo, ell_plot, chi_min=1.0, chi_max=chi_total, z_source=z_source, n_steps=1024)
 
     # Compute Ratio
     ratio_ampl = jnp.sqrt(cl_box / cl_total)

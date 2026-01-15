@@ -20,4 +20,4 @@ notebooks/FLI_introduction.ipynb
 .vscode/
 
 # Configs
-configs/05_cmb_lensing/submitted
+configs/inference/submitted

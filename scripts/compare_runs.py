@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """
-Compare two runs of 05_cmb_lensing.py using GetDist.
+Compare two runs of run_inference.py using GetDist.
 Generates a triangle plot comparing the posterior distributions of parameters.
 
 Usage:
@@ -17,7 +17,7 @@ import numpy as np
 from getdist import plots
 
 from desi_cmb_fli.chains import Chains
-from desi_cmb_fli.model import FieldLevelModel, default_config
+from desi_cmb_fli.model import FieldLevelModel
 
 # Memory optimization for JAX
 os.environ["TF_GPU_ALLOCATOR"] = "cuda_malloc_async"
@@ -48,25 +48,22 @@ def load_and_process(run_dir, label):
     # Load truth
     truth_params = cfg["truth_params"]
 
-    # Setup model for reparametrization
-    model_config = default_config.copy()
-    model_config["mesh_shape"] = tuple(cfg["model"]["mesh_shape"])
-    model_config["box_shape"] = tuple(cfg["model"]["box_shape"])
-    model_config["evolution"] = cfg["model"]["evolution"]
-    model_config["lpt_order"] = cfg["model"]["lpt_order"]
-    model_config["a_obs"] = cfg["model"]["a_obs"]
-    model_config["gxy_density"] = cfg["model"]["gxy_density"]
+    # Load model config from model.yaml (saved by run script)
+    import yaml
+    model_config_path = config_dir / "model.yaml"
+    if not model_config_path.exists():
+        raise FileNotFoundError(f"model.yaml not found at {model_config_path}")
 
-    # CMB config
-    cmb_cfg = cfg.get("cmb_lensing", {})
-    model_config["cmb_enabled"] = cmb_cfg.get("enabled", False)
-    if model_config["cmb_enabled"]:
-        model_config["cmb_field_size_deg"] = float(cmb_cfg.get("field_size_deg", 5.0))
-        model_config["cmb_field_npix"] = int(cmb_cfg.get("field_npix", 64))
-        model_config["cmb_z_source"] = float(cmb_cfg.get("z_source", 1100.0))
-        model_config["cmb_noise_nell"] = cmb_cfg.get("cmb_noise_nell")
+    with open(model_config_path) as f:
+        model_kwargs = yaml.safe_load(f)
 
-    model = FieldLevelModel(**model_config)
+    # Convert lists to tuples for shape parameters
+    if "box_shape" in model_kwargs:
+        model_kwargs["box_shape"] = tuple(model_kwargs["box_shape"])
+    if "mesh_shape" in model_kwargs:
+        model_kwargs["mesh_shape"] = tuple(model_kwargs["mesh_shape"])
+
+    model = FieldLevelModel(**model_kwargs)
 
     # Reparametrize to physical space
     print("  Reparametrizing samples...")

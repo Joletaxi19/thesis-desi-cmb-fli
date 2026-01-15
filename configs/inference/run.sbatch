@@ -11,14 +11,14 @@ export LD_LIBRARY_PATH=$(echo ${CONDA_PREFIX}/lib/python3.11/site-packages/nvidi
 export PATH=${CONDA_PREFIX}/bin:$PATH
 
 # Run script with config path (argument 1, default to standard config)
-CONFIG_PATH=${1:-configs/05_cmb_lensing/config.yaml}
+CONFIG_PATH=${1:-configs/inference/config.yaml}
 echo "Using config: $CONFIG_PATH"
 
 # Use absolute python path to guarantee correct environment
-${CONDA_PREFIX}/bin/python -u scripts/05_cmb_lensing.py --config "$CONFIG_PATH"
+${CONDA_PREFIX}/bin/python -u scripts/run_inference.py --config "$CONFIG_PATH"
 
 # Cleanup temporary config file if it's in the submitted directory
-if [[ "$CONFIG_PATH" == *"configs/05_cmb_lensing/submitted/"* ]]; then
+if [[ "$CONFIG_PATH" == *"configs/inference/submitted/"* ]]; then
     echo "Cleaning up temporary config: $CONFIG_PATH"
     rm "$CONFIG_PATH"
 fi

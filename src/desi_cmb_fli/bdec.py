@@ -5,17 +5,11 @@ from jax import numpy as jnp
 from jax import vmap
 from jax.typing import ArrayLike
 
+from desi_cmb_fli.utils import safe_div
+
 ###########################
 # Bayesian Decision utils #
 ###########################
-
-
-def safe_div(x, y):
-    """
-    Safe division, where division by zero is zero.
-    """
-    y_nozeros = jnp.where(y == 0, 1, y)
-    return jnp.where(y == 0, 0, x / y_nozeros)
 
 
 def vsearchsorted(a, v, side="left", sorter=None):

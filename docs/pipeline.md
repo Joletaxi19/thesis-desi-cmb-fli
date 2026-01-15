@@ -17,7 +17,6 @@ The pipeline proceeds through the following stages:
 
 Generate 3D Gaussian random fields representing primordial density fluctuations in a periodic box. These serve as initial conditions for gravitational evolution.
 
-**Module:** `desi_cmb_fli.initial_conditions`
 **Implementation:** Power spectrum computation via `jax_cosmo` (Eisenstein–Hu transfer function); 3D field generation in Fourier space; validation through measured power spectra.
 **Tests:** `tests/test_initial_conditions.py`
 **Notebook:** `notebooks/01_initial_conditions_demo.ipynb`
@@ -30,7 +29,6 @@ Generate 3D Gaussian random fields representing primordial density fluctuations 
 
 Evolve initial density fields forward in time using Lagrangian Perturbation Theory (LPT) and N-body particle-mesh methods with the BullFrog integrator.
 
-**Module:** `desi_cmb_fli.evolution`
 **Implementation:**
 - Growth factor computations via `jaxpm` ODE solver
 - First and second-order LPT displacements
@@ -112,25 +110,49 @@ Computation of convergence κ from matter fields using Born approximation.
 
 Joint inference on synthetic galaxy + CMB lensing data to constrain cosmology and initial conditions.
 
-**Script:** `scripts/05_cmb_lensing.py`
+**Script:** `scripts/run_inference.py`
 **Implementation:**
 - **Joint Likelihood**: Combines the galaxy number density likelihood with the CMB lensing convergence ($\kappa$) likelihood.
 - **Planck PR4 Noise**: Incorporates realistic reconstruction noise using the official Planck PR4 $N_\ell$ spectrum.
-- **Full LoS Correction**: Supplements the simulation box contribution with a theoretical high-redshift convergence power spectrum ($C_\ell^{\kappa_{high-z}}$) computed via `jax_cosmo`. This ensures the predicted lensing amplitude matches the theoretical expectation for the full line-of-sight ($z \lesssim 1100$).
-- **Geometry Enforcement**: The model unconditionally enforces $z_{min}=0$ (Observer at the box face) to ensure consistent physical coordinates for the lensing efficiency kernel.
-- **HMC/MCMC Stability**: Galaxy-only runs at low redshift ($z \sim 0.36$) utilize a safety clamp on the MCMC `step_size` (max 0.5) to maintain stability in the presence of high posterior curvature.
+- **High-z Analytical Marginalization**: Accounts for the unmodeled high-redshift ($z > z_{box}$) lensing contribution by analytically marginalizing over the missing volume.
+  - The theoretical convergence power spectrum ($C_\ell^{\kappa_{high-z}}$) is computed via `jax_cosmo` using the **Non-Linear Matter Power Spectrum (Halofit)**.
+  - This spectrum is added to the noise variance ($N_\ell + C_\ell^{\kappa_{high-z}}$) in the likelihood, correctly treating the high-z signal as an additional structured Gaussian variance (Cosmic Variance) rather than a fixed estimate.
+- **Angle Calibration (Gnomonic Projection)**: The angular field of view is calculated using exact trigonometry: $\theta = 2 \arctan(L_{trans} / 2\chi_{back})$.
+  - This replaces the linear approximation ($\theta \approx L/\chi$) which introduced an error.
+  - The Ray-Tracing module uses a tangent-plane projection ($x = \chi \tan(\theta)$) to accurately map the rectilinear simulation box onto the angular grid.
+- **Geometry Enforcement**: The model unconditionaly enforces $z_{min}=0$ (Observer at the box face).
+- **Even Mesh Dimensions (MCLMC Requirement)**: The mesh dimensions are automatically adjusted to ensure all axes have an **even number of cells**.
 
-**Validation:**
-- **Signal Coverage**: `scripts/plot_lensing_fraction.py` quantifies the fraction of the lensing signal contained within the box at various depths, demonstrating the necessity of the High-Z correction.
-- **Cross-Correlations**: Validated through the coherence and cross-power between the inferred galaxy and convergence fields.
+### Diagnostic Tools
+
+#### Theoretical Spectrum Comparison (`quick_cl_spectra.py`)
+
+A diagnostic script to compare **simulated spectra** against **theoretical predictions** computed via Limber integration with `jax_cosmo`:
+
+- **Theoretical Spectra**: Uses `compute_theoretical_cl_kappa`, `compute_theoretical_cl_gg`, and `compute_theoretical_cl_kg` from `cmb_lensing.py` to compute:
+  - $C_\ell^{\kappa\kappa}$ – Convergence auto-spectrum (Limber integral with lensing kernel)
+  - $C_\ell^{gg}$ – Galaxy auto-spectrum (with linear bias $b_1$)
+  - $C_\ell^{\kappa g}$ – Cross-spectrum (galaxy-convergence correlation)
+- **Multi-Realization Support**: Averages over multiple realizations to estimate cosmic variance.
+- **Noise Overlay**: Plots `Theory + $N_\ell$` curves for direct comparison with observed spectra.
+
+#### Energy Variance Diagnostics
+
+The MCLMC sampler's performance is critically dependent on the **energy variance** parameter (`desired_energy_var` in `config.yaml`). The script `run_inference.py` implements automatic diagnostics after warmup:
+
+1. **Per-Chain Energy Variance**: After the first sampling batch, the script reports `MSE/dim` for each chain individually.
+2. **Ratio Check**: Compares the actual energy variance to the desired value. A ratio $< 2\times$ is considered acceptable.
+3. **Tuning Guidance**: If the ratio is too high, reduce `desired_energy_var` in `config.yaml`. Values around `5e-8` to `5e-7` have been found to work well for this pipeline (down from initial values of `5e-4`).
+
+> [!TIP]
+> If all 4 chains show energy variance close to the desired value after warmup, the sampler is well-tuned. If ratios are consistently $> 2\times$, try reducing `desired_energy_var` by a factor of 10.
 
 ---
 
 ## Next Steps
 
-1. **Phase-level inference on high-z lensing correction** - Extend the model to infer the phases of the high-redshift corrective convergence map.
-2. **Preconditioning for Joint Inference** - Incorporate CMB lensing terms into the MCLMC/MAMS preconditioning matrices for improved sampling efficiency.
-3. **Implement Lightcone for Galaxy Field** - Account for structure evolution and geometric projection within the simulation box (moving beyond the current snapshot/effective-redshift approximation).
-4. **Field-Level Inference on Real Data** - Application to joint DESI LRG $\times$ Planck/ACT $\kappa$-map datasets.
+1. **Preconditioning for Joint Inference** - Incorporate CMB lensing terms into the MCLMC/MAMS preconditioning matrices for improved sampling efficiency.
+2. **Implement Lightcone for Galaxy Field** - Account for structure evolution and geometric projection within the simulation box (moving beyond the current snapshot/effective-redshift approximation).
+3. **Field-Level Inference on Real Data** - Application to joint DESI LRG $\times$ Planck/ACT $\kappa$-map datasets.
 
 Implementation details will be documented as development progresses.
