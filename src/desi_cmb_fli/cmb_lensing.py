@@ -53,7 +53,7 @@ def convergence_Born(cosmo,
     # Compute constant prefactor: 3/2 * Omega_m * (H0/c)^2
     constant_factor = 3 / 2 * cosmo.Omega_m * (constants.H0 / constants.c)**2
 
-    # Compute comoving distance of source galaxies
+    # Compute comoving distance of source(s)
     r_s = jc.background.radial_comoving_distance(cosmo, 1 / (1 + z_source))
 
     n_planes = len(r_planes)

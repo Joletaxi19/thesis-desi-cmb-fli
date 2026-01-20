@@ -2,13 +2,14 @@ from __future__ import annotations  # for Union typing with | in python<3.10
 
 from dataclasses import asdict, dataclass, field
 from functools import partial
+from pathlib import Path
 from pprint import pformat
 
 import jax_cosmo as jc
 import numpy as np
 import numpyro.distributions as dist
 from IPython.display import display
-from jax import grad, tree
+from jax import grad, jacfwd, tree
 from jax import numpy as jnp
 from jax import random as jr
 from jax_cosmo import Cosmology
@@ -65,6 +66,7 @@ default_config = {
     "cmb_field_npix": None,  # Number of pixels for convergence map (None = match mesh_shape)
 
     "cmb_z_source": 1100.0,  # CMB last scattering surface
+    "high_z_mode": "fixed",  # 'fixed', 'taylor', 'exact'
 
     # Latents
     "precond": "kaiser_dyn",  # direct, fourier, kaiser, kaiser_dyn
@@ -72,48 +74,54 @@ default_config = {
         "Omega_m": {
             "group": "cosmo",
             "label": "{\\Omega}_m",
-            "loc": 0.3111,
+            "loc": 0.3,
             "scale": 0.5,
-            "scale_fid": 0.02,
-            "low": 0.1,  # XXX: Omega_m < Omega_b implies nan
+            "scale_fid": 0.05, # Widen to 0.05 for better exploration
+            "loc_fid": 0.3,
+            "low": 0.1,  # Omega_m < Omega_b implies nan
             "high": 1.0,
         },
         "sigma8": {
             "group": "cosmo",
             "label": "{\\sigma}_8",
-            "loc": 0.8102,
+            "loc": 0.8,
             "scale": 0.5,
-            "scale_fid": 0.02,
+            "scale_fid": 0.05, # Widen to 0.05 for better exploration
+            "loc_fid": 0.8,
             "low": 0.0,
             "high": jnp.inf,
         },
         "b1": {
             "group": "bias",
             "label": "{b}_1",
-            "loc": 1.0,
+            "loc": 1.2,
             "scale": 0.5,
-            "scale_fid": 0.04,
+            "scale_fid": 0.5, # Wide prior to prevent gradient squashing
+            "loc_fid": 1.2,
         },
         "b2": {
             "group": "bias",
             "label": "{b}_2",
             "loc": 0.0,
-            "scale": 1.0,  # Tightened for stability
-            "scale_fid": 0.02,
+            "scale": 1.0,
+            "scale_fid": 0.5, # Wide prior
+            "loc_fid": 0.0,
         },
         "bs2": {
             "group": "bias",
             "label": "{b}_{s^2}",
             "loc": 0.0,
-            "scale": 1.0,  # Tightened for stability
-            "scale_fid": 0.08,
+            "scale": 1.0,
+            "scale_fid": 0.5, # Wide prior
+            "loc_fid": 0.0,
         },
         "bn2": {
             "group": "bias",
             "label": "{b}_{\\nabla^2}",
             "loc": 0.0,
-            "scale": 1.0,  # Tightened for stability
-            "scale_fid": 0.05,  # Tightened to prevent bn2 absorbing correlations
+            "scale": 1.0,
+            "scale_fid": 0.5, # Wide prior
+            "loc_fid": 0.0,
         },
         "init_mesh": {
             "group": "init",
@@ -121,6 +129,65 @@ default_config = {
         },
     },
 }
+
+
+def get_model_from_config(config_or_path):
+    """
+    Factory function to create a FieldLevelModel from a config dictionary or path.
+    Handles loading, mesh calculation, and parameter setup (CMB, etc.).
+
+    Args:
+        config_or_path (dict or str or Path): Config dict or path to config.yaml.
+
+    Returns:
+        tuple: (field_level_model_instance, config_dict)
+    """
+    if isinstance(config_or_path, str | Path):
+        from desi_cmb_fli import utils
+        cfg = utils.yload(config_or_path)
+    else:
+        cfg = config_or_path
+
+    # Build model config
+    model_config = default_config.copy()
+    model_config["box_shape"] = tuple(cfg["model"]["box_shape"])
+
+    # Cell size & Mesh shape
+    cell_size = float(cfg["model"]["cell_size"])
+    mesh_shape = [int(round(L / cell_size)) for L in model_config["box_shape"]]
+    mesh_shape = [n + 1 if n % 2 != 0 else n for n in mesh_shape] # Ensure even
+    model_config["mesh_shape"] = tuple(mesh_shape)
+
+    # Evolution params
+    model_config["evolution"] = cfg["model"]["evolution"]
+    model_config["lpt_order"] = cfg["model"]["lpt_order"]
+    model_config["gxy_density"] = cfg["model"]["gxy_density"]
+
+    # CMB lensing config
+    cmb_cfg = cfg.get("cmb_lensing", {})
+    if cmb_cfg.get("enabled", False):
+        model_config["cmb_enabled"] = True
+        # If enabled, setup specific CMB params
+        model_config["cmb_field_size_deg"] = None  # Auto-calculate
+        model_config["cmb_field_npix"] = int(cmb_cfg["field_npix"]) if "field_npix" in cmb_cfg else None
+        model_config["full_los_correction"] = cmb_cfg.get("full_los_correction", False)
+        model_config["cmb_z_source"] = float(cmb_cfg.get("z_source", 1100.0))
+        model_config["cmb_lensing_obs"] = None # Will be set via conditioning if needed
+
+        # High-Z mode selection
+        if "high_z_mode" in cmb_cfg:
+            model_config["high_z_mode"] = cmb_cfg["high_z_mode"]
+        elif "cache_high_z_cl" in cmb_cfg:
+             # Legacy support
+             model_config["high_z_mode"] = "fixed" if cmb_cfg["cache_high_z_cl"] else "exact"
+        else:
+            # Default
+            model_config["high_z_mode"] = "fixed"
+
+        if "cmb_noise_nell" in cmb_cfg:
+            model_config["cmb_noise_nell"] = cmb_cfg["cmb_noise_nell"]
+
+    return FieldLevelModel(**model_config), model_config
 
 
 class Model:
@@ -388,7 +455,9 @@ class FieldLevelModel(Model):
     cmb_z_source: float = field(default=default_config["cmb_z_source"])
     cmb_enabled: bool = field(default=False)  # Explicit flag to enable CMB lensing
 
-    full_los_correction: bool = field(default=False)  # Enable high-z kappa correction (force z_min=0)
+    full_los_correction: bool = field(default=False)  # Enable high-z kappa correction
+    cache_high_z_cl: bool = field(default=True)  # Cache C_l^{high-z} at fiducial cosmology (faster)
+    high_z_mode: str = field(default="fixed")  # 'fixed', 'taylor', 'exact'
     # Latents (required, from default_config)
     precond: str = field(default=default_config["precond"])
     latents: dict = field(default_factory=lambda: default_config["latents"])
@@ -487,6 +556,69 @@ class FieldLevelModel(Model):
             print(f"  Input N_ell shape: {ell_in.shape}")
             print(f"  Interpolated grid shape: {self.cmb_noise_power_k.shape}")
             print(f"  Min/Max noise power: {self.cmb_noise_power_k.min():.2e} / {self.cmb_noise_power_k.max():.2e}")
+
+            # Cache or Precompute High-Z Correction
+            self.cl_high_z_cached = None
+            self.high_z_grads = None
+
+            if self.full_los_correction:
+                # Import necessary
+                from desi_cmb_fli.cmb_lensing import compute_theoretical_cl_kappa
+                # get_cosmology is already imported globally
+
+                # 1. Compute Fiducial C_l (needed for 'fixed' and 'taylor')
+                if self.high_z_mode in ["fixed", "taylor"]:
+                    chi_source_fid = float(jc.background.radial_comoving_distance(cosmo_fid, 1.0 / (1.0 + self.cmb_z_source))[0])
+                    self.cl_high_z_cached = compute_theoretical_cl_kappa(
+                        cosmo_fid,
+                        self.ell_grid,
+                        chi_max_box,  # chi_min for high-z = chi_max of box
+                        chi_source_fid,
+                        self.cmb_z_source
+                    )
+                    print(f"  Cached C_l^{{high-z}} at fiducial (Mode: {self.high_z_mode}). Shape: {self.cl_high_z_cached.shape}")
+
+                # 2. Compute Gradients for Taylor Expansion
+                if self.high_z_mode == "taylor":
+                    print("  Computing gradients for High-Z Taylor correction...")
+                    # Local wrapper to be differentiated
+                    def get_theoretical_cl_wrapper(theta):
+                        # Theta = [Omega_m, sigma8] (params that vary)
+                        Om, s8 = theta
+                        # Reconstruct cosmo
+                        # Assumes fixed params (h, ns, wb) as in get_cosmology
+                        c_ = get_cosmology(Omega_m=Om, sigma8=s8)
+
+                        # Recompute integration bounds (geometry) depends on cosmology
+                        chi_max_box_ = jc.background.radial_comoving_distance(c_, 1.0/self.a_obs)[0] + self.box_shape[2]/2.0 # Wait, check logic
+                        # Actually: box is centered at a_obs.
+                        # chi_center = chi(a_obs)
+                        # chi_max = chi_center + Lz/2
+                        chi_center_ = jc.background.radial_comoving_distance(c_, jnp.atleast_1d(self.a_obs))[0]
+                        chi_max_box_ = chi_center_ + self.box_shape[2]/2.0
+
+                        chi_source_ = jc.background.radial_comoving_distance(c_, 1.0 / (1.0 + self.cmb_z_source))[0]
+
+                        # Compute Cl
+                        return compute_theoretical_cl_kappa(
+                            c_,
+                            self.ell_grid,
+                            chi_max_box_,
+                            chi_source_,
+                            self.cmb_z_source
+                        )
+
+                    # Fiducial point
+                    theta_fid = jnp.array([self.loc_fid["Omega_m"], self.loc_fid["sigma8"]])
+
+                    # Jacobian
+                    jac_fn = jacfwd(get_theoretical_cl_wrapper)
+                    grads = jac_fn(theta_fid) # Shape: (ell_grid_shape, 2)
+
+                    self.dCl_dOm = grads[..., 0]
+                    self.dCl_ds8 = grads[..., 1]
+
+                    print(f"  ✓ Gradients computed. dCl/dOm shape: {self.dCl_dOm.shape}")
 
 
 
@@ -651,17 +783,34 @@ class FieldLevelModel(Model):
                 )
 
                 if self.full_los_correction:
-                    # Add C_l from beyond the box to noise variance (analytical marginalization)
-                    chi_min_hz = self.box_shape[2]
-                    chi_source_val = jc.background.radial_comoving_distance(cosmology, 1.0 / (1.0 + self.cmb_z_source))[0]
+                    if self.high_z_mode == "fixed":
+                        cl_high_z = self.cl_high_z_cached
 
-                    cl_high_z = compute_theoretical_cl_kappa(
-                        cosmology,
-                        self.ell_grid,
-                        chi_min_hz,
-                        chi_source_val,
-                        self.cmb_z_source
-                    )
+                    elif self.high_z_mode == "taylor":
+                        # Apply first-order Taylor correction around fiducial cosmology
+                        Om_curr = cosmology.Omega_c + cosmology.Omega_b
+                        s8_curr = cosmology.sigma8
+
+                        dOm = Om_curr - self.loc_fid["Omega_m"]
+                        ds8 = s8_curr - self.loc_fid["sigma8"]
+
+                        cl_high_z = self.cl_high_z_cached + self.dCl_dOm * dOm + self.dCl_ds8 * ds8
+                        cl_high_z = jnp.maximum(cl_high_z, 0.0)
+
+                    else: # exact
+                        # Compute dynamically (expensive!)
+                        # We need to calculate chi bounds based on current cosmology
+                        chi_center_current = jc.background.radial_comoving_distance(cosmology, jnp.atleast_1d(self.a_obs))[0]
+                        chi_max_box_current = chi_center_current + self.box_shape[2] / 2.0
+
+                        chi_source_val = jc.background.radial_comoving_distance(cosmology, 1.0 / (1.0 + self.cmb_z_source))[0]
+                        cl_high_z = compute_theoretical_cl_kappa(
+                            cosmology,
+                            self.ell_grid,
+                            chi_max_box_current,
+                            chi_source_val,
+                            self.cmb_z_source
+                        )
                 else:
                     cl_high_z = 0.0
 

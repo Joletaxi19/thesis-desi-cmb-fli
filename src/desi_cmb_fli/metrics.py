@@ -161,8 +161,6 @@ def get_cl_2d(map1, map2=None, field_size_deg=1.0, comp=(0, 0)):
         Field size in degrees.
     comp : tuple
         Deconvolution order for paint_kernel. Defaults to (0, 0) (No deconvolution).
-        Note: Maps generated via linear interpolation (CIC) will show window function
-        suppression at high ell. This is expected and not corrected here.
 
     Returns
     -------

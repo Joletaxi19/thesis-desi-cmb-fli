@@ -25,6 +25,7 @@ cmb_lensing:
   z_source: 1100.0
   cmb_noise_nell: "/global/cfs/cdirs/cmb/data/planck2020/PR4_lensing/PR4_nlkk_p.dat"
   full_los_correction: true
+  high_z_mode: taylor
 
 # Truth parameters
 truth_params:
@@ -42,7 +43,7 @@ mcmc:
 
   # Sampling
   num_samples: 500
-  num_batches: 15
+  num_batches: 11
   num_chains: 4
 
   save_large_fields: false
