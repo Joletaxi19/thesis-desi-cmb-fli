@@ -456,7 +456,6 @@ class FieldLevelModel(Model):
     cmb_enabled: bool = field(default=False)  # Explicit flag to enable CMB lensing
 
     full_los_correction: bool = field(default=False)  # Enable high-z kappa correction
-    cache_high_z_cl: bool = field(default=True)  # Cache C_l^{high-z} at fiducial cosmology (faster)
     high_z_mode: str = field(default="fixed")  # 'fixed', 'taylor', 'exact'
     # Latents (required, from default_config)
     precond: str = field(default=default_config["precond"])
@@ -590,10 +589,6 @@ class FieldLevelModel(Model):
                         c_ = get_cosmology(Omega_m=Om, sigma8=s8)
 
                         # Recompute integration bounds (geometry) depends on cosmology
-                        chi_max_box_ = jc.background.radial_comoving_distance(c_, 1.0/self.a_obs)[0] + self.box_shape[2]/2.0 # Wait, check logic
-                        # Actually: box is centered at a_obs.
-                        # chi_center = chi(a_obs)
-                        # chi_max = chi_center + Lz/2
                         chi_center_ = jc.background.radial_comoving_distance(c_, jnp.atleast_1d(self.a_obs))[0]
                         chi_max_box_ = chi_center_ + self.box_shape[2]/2.0
 
