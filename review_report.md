@@ -9,7 +9,7 @@
 - None found.
 
 ## Potential issues (not confirmed)
-- `src/desi_cmb_fli/metrics.py` (`spectrum`): when `mesh2` is provided, cross-power bins are reduced
+- `src/desi_cmb_fli/metrics.py` (`spectrum`): when `mesh2` is provided, cross-spectrum bins are reduced
   to a magnitude `sqrt(real^2 + imag^2)`. This makes cross-spectra strictly positive and can mask
   negative correlations. If you expect a signed cross-spectrum, consider keeping the real
   cross-power (or complex sum) instead of the magnitude.
