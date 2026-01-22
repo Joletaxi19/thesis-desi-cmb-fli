@@ -3,9 +3,9 @@
 ## Scope
 - Reviewed all files in the repository (excluding `.git` and `.github/agents`), including
   `scripts/run_inference.py`, `src/desi_cmb_fli/model.py`, `src/desi_cmb_fli/cmb_lensing.py`,
-  `src/desi_cmb_fli/validation.py`, and the notebooks/scripts/tests.
+  `src/desi_cmb_fli/validation.py`, plus notebook files, additional scripts, and test files.
 
-## Confirmed issues
+## Confirmed issues (blocking)
 - None found.
 
 ## Potential issues (not confirmed)
