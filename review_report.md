@@ -10,8 +10,8 @@
 
 ## Potential issues (not confirmed)
 - `src/desi_cmb_fli/metrics.py` (`spectrum`): when `mesh2` is provided, cross-spectrum bins are reduced
-  to a magnitude `sqrt(real^2 + imag^2)`. This makes cross-spectra strictly positive and can mask
-  negative correlations. If you expect a signed cross-spectrum, consider keeping the real
+  to a magnitude `sqrt(real^2 + imag^2)`. This makes the cross-spectrum strictly positive and can
+  mask negative correlations. If you expect a signed cross-spectrum, consider keeping the real
   cross-power (or complex sum) instead of the magnitude.
 - `src/desi_cmb_fli/model.py` (`FieldLevelModel.__post_init__`): the input `a_obs` value is
   overwritten based on the box center and fiducial cosmology. If a user expects to control
@@ -19,7 +19,7 @@
 - `src/desi_cmb_fli/cmb_lensing.py` (`density_field_to_convergence`): when `box_center_chi` is
   smaller than half the box depth, `r_start` becomes negative, leading to negative `r_planes`.
   This can yield invalid `a_of_chi` calls or unphysical lensing kernels. Consider validating
-  inputs or clamping `r_start`/`r_planes` to zero.
+  inputs or clamping `r_start` to keep `r_planes` non-negative.
 - `src/desi_cmb_fli/validation.py` (`compute_and_plot_spectra`): `gxy_delta = (gxy_proj - mean)/mean`
   assumes `mean` is nonzero; if the projection happens to be mean-zero (or negative), this will
   divide by zero or flip signs in unexpected ways.
