@@ -66,7 +66,7 @@ default_config = {
     "cmb_field_npix": None,  # Number of pixels for convergence map (None = match mesh_shape)
 
     "cmb_z_source": 1100.0,  # CMB last scattering surface
-    "high_z_mode": "fixed",  # 'fixed', 'taylor', 'exact'
+    "high_z_mode": "taylor",  # 'fixed', 'taylor', 'exact'
 
     # Latents
     "precond": "kaiser_dyn",  # direct, fourier, kaiser, kaiser_dyn
@@ -464,7 +464,7 @@ class FieldLevelModel(Model):
     cmb_enabled: bool = field(default=False)  # Explicit flag to enable CMB lensing
 
     full_los_correction: bool = field(default=False)  # Enable high-z kappa correction
-    high_z_mode: str = field(default="fixed")  # 'fixed', 'taylor', 'exact'
+    high_z_mode: str = field(default="taylor")  # 'fixed', 'taylor', 'exact'
     # Latents (required, from default_config)
     precond: str = field(default=default_config["precond"])
     latents: dict = field(default_factory=lambda: default_config["latents"])
