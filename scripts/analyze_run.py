@@ -153,7 +153,7 @@ def analyze_run(run_dir, burn_in=0.5, exclude_chains=None, output_subdir=None):
             suffix_parts.append(f"excl{excl_str}")
         else:
             suffix_parts.append("allchains")
-        output_subdir = f"reanalysis_{'_'.join(suffix_parts)}"
+        output_subdir = f"analysis_{'_'.join(suffix_parts)}"
 
     fig_dir = run_dir / output_subdir
     fig_dir.mkdir(exist_ok=True, parents=True)
@@ -165,7 +165,6 @@ def analyze_run(run_dir, burn_in=0.5, exclude_chains=None, output_subdir=None):
     physical_samples = data["physical_samples"]
     truth_vals = data["truth_vals"]
     available_params = data["available_params"]
-    model = data.get("model")
 
     # 5. Diagnostics & Plotting
     print("\n" + "="*40)
@@ -216,34 +215,6 @@ def analyze_run(run_dir, burn_in=0.5, exclude_chains=None, output_subdir=None):
     plt.tight_layout()
     plt.savefig(fig_dir / "posteriors.png", dpi=150)
     plt.close()
-
-    # Posterior Predictive Check (Spectra)
-    if model is not None:
-        print("\n" + "="*40)
-        print("POSTERIOR PREDICTIVE CHECK (Spectra)")
-        print("="*40)
-        from desi_cmb_fli.validation import compute_and_plot_spectra
-
-        # Use mean parameters from posterior
-        print("Using posterior mean parameters:", mean_params)
-
-        # Prepare parameters: start with truth values, override with posterior means for sampled params
-        check_params = truth_vals.copy()
-        check_params.update(mean_params)
-
-        try:
-             compute_and_plot_spectra(
-                model=model,
-                truth_params=check_params,
-                output_dir=fig_dir,
-                n_realizations=1,
-                seed=42, # Check a single realization with mean params
-                show=False,
-                suffix="_posterior_check",
-                model_config=data.get("model_config")
-             )
-        except Exception as e:
-             print(f"Warning: Failed to run posterior predictive check: {e}")
 
     # GetDist
     try:

@@ -415,3 +415,116 @@ def compute_theoretical_cl_kg(cosmo, ell, chi_min, chi_max, z_source, b1, n_step
         return (jnp.sum(integrand) - 0.5 * (integrand[0] + integrand[-1])) * dx
 
     return jax.vmap(get_cl_per_ell)(ell)
+
+
+def compute_cl_high_z(cosmo, ell_grid, chi_min, chi_max, z_source,
+                      mode="fixed",
+                      cosmo_fid=None,
+                      cl_cached=None,
+                      gradients=None,
+                      loc_fid=None,
+                      n_steps=100):
+    """
+    Compute high-z C_l^{kappa kappa} correction with multiple strategies.
+
+    This function centralizes the logic for computing the high-redshift contribution
+    to the lensing power spectrum. Three modes are supported:
+
+    - 'fixed': Uses pre-computed C_l at fiducial cosmology (fastest, least accurate)
+    - 'taylor': Applies first-order Taylor expansion around fiducial (fast, accurate for small deviations)
+    - 'exact': Computes dynamically for current cosmology (slow, most accurate)
+
+    Parameters
+    ----------
+    cosmo : jax_cosmo.Cosmology
+        Current cosmology for which to compute C_l
+    ell_grid : array
+        2D grid of ell values (typically from FFT grid)
+    chi_min : float
+        Minimum comoving distance for integration (Mpc/h)
+    chi_max : float
+        Maximum comoving distance for integration (Mpc/h)
+    z_source : float
+        Source redshift for lensing
+    mode : str, optional
+        Computation mode: 'fixed', 'taylor', or 'exact' (default: 'fixed')
+    cosmo_fid : jax_cosmo.Cosmology, optional
+        Fiducial cosmology (required for 'taylor' mode)
+    cl_cached : array, optional
+        Pre-computed C_l at fiducial cosmology (required for 'fixed' and 'taylor' modes)
+    gradients : dict, optional
+        Dictionary with 'dCl_dOm' and 'dCl_ds8' arrays (required for 'taylor' mode)
+    loc_fid : dict, optional
+        Fiducial parameter values with 'Omega_m' and 'sigma8' keys (required for 'taylor' mode)
+    n_steps : int, optional
+        Number of integration steps for 'exact' mode (default: 100)
+
+    Returns
+    -------
+    cl_high_z : array
+        High-z C_l correction, same shape as ell_grid
+
+    Raises
+    ------
+    ValueError
+        If required parameters for the selected mode are not provided
+
+    Examples
+    --------
+    Fixed mode (fastest):
+    >>> cl = compute_cl_high_z(cosmo, ell_grid, 320, 14000, 1100,
+    ...                        mode='fixed', cl_cached=cl_fid)
+
+    Taylor mode (accurate for small deviations):
+    >>> cl = compute_cl_high_z(cosmo, ell_grid, 320, 14000, 1100,
+    ...                        mode='taylor', cl_cached=cl_fid,
+    ...                        gradients={'dCl_dOm': grad_om, 'dCl_ds8': grad_s8},
+    ...                        loc_fid={'Omega_m': 0.3, 'sigma8': 0.8})
+
+    Exact mode (most accurate, slowest):
+    >>> cl = compute_cl_high_z(cosmo, ell_grid, 320, 14000, 1100,
+    ...                        mode='exact')
+    """
+    if mode == "fixed":
+        if cl_cached is None:
+            raise ValueError("mode='fixed' requires cl_cached parameter")
+        return cl_cached
+
+    elif mode == "taylor":
+        if cl_cached is None or gradients is None or loc_fid is None:
+            raise ValueError("mode='taylor' requires cl_cached, gradients, and loc_fid parameters")
+
+        # Extract current cosmological parameters
+        Om_curr = cosmo.Omega_c + cosmo.Omega_b
+        s8_curr = cosmo.sigma8
+
+        # Compute deviations from fiducial
+        dOm = Om_curr - loc_fid["Omega_m"]
+        ds8 = s8_curr - loc_fid["sigma8"]
+
+        # Apply first-order Taylor correction
+        cl_high_z = cl_cached + gradients['dCl_dOm'] * dOm + gradients['dCl_ds8'] * ds8
+
+        # Ensure non-negative
+        return jnp.maximum(cl_high_z, 0.0)
+
+    elif mode == "exact":
+        # Compute chi_source for current cosmology
+        chi_source = jc.background.radial_comoving_distance(cosmo, 1.0 / (1.0 + z_source))[0]
+
+        # Use chi_source if chi_max not provided
+        if chi_max is None:
+            chi_max = chi_source
+
+        # Compute C_l dynamically (expensive!)
+        return compute_theoretical_cl_kappa(
+            cosmo,
+            ell_grid,
+            chi_min,
+            chi_max,
+            z_source,
+            n_steps=n_steps
+        )
+
+    else:
+        raise ValueError(f"Unknown mode '{mode}'. Must be 'fixed', 'taylor', or 'exact'")

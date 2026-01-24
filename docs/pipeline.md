@@ -120,7 +120,7 @@ Joint inference on synthetic galaxy + CMB lensing data to constrain cosmology an
   - **High-Z Correction Strategy (`high_z_mode`)**: Computing the high-z $C_\ell$ spectrum involves ~200k P(k) evaluations. We support three modes:
     - **`fixed`**: Caches $C_\ell^{high-z}$ at the **fiducial cosmology**. Fast, but mathematically inaccurate when sampled parameters drift far from fiducial.
     - **`taylor`** (Default): Uses a **First-Order Taylor Expansion** (Linear Emulator). The gradients $\partial C_\ell / \partial \Omega_m$ and $\partial C_\ell / \partial \sigma_8$ are precomputed at initialization. The likelihood applies a linear correction $C_\ell(\theta) \approx C_\ell(\theta_{fid}) + \nabla C_\ell \cdot \Delta \theta$.
-    - **`exact`**: Fully recomputes the integral at every step. extremely slow, used only for debugging/validation.
+    - **`exact`**: Fully recomputes the integral at every step. Extremely slow, used only for debugging/validation.
 - **Angle Calibration (Gnomonic Projection)**: The angular field of view is calculated using exact trigonometry: $\theta = 2 \arctan(L_{trans} / 2\chi_{back})$.
   - This replaces the linear approximation ($\theta \approx L/\chi$) which introduced an error.
   - The Ray-Tracing module uses a tangent-plane projection ($x = \chi \tan(\theta)$) to accurately map the rectilinear simulation box onto the angular grid.

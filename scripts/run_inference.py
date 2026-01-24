@@ -175,17 +175,33 @@ else:
     print("\n" + "-" * 40)
     print("VALIDATION: Field Slices")
     print("-" * 40)
+    import jax_cosmo as jc
+
+    from desi_cmb_fli.bricks import get_cosmology
     from desi_cmb_fli.validation import compute_and_plot_spectra, plot_field_slices
 
-    plot_field_slices(truth, output_dir=config_dir)
-    print(f"✓ Saved field slices to {config_dir}")
+    # Compute chi_center for projection (needed for galaxy projection in kappa_maps)
+    cosmo_truth = get_cosmology(**truth_params)
+    chi_center = float(jc.background.radial_comoving_distance(
+        cosmo_truth, jnp.atleast_1d(model.a_obs)
+    )[0])
+
+    plot_field_slices(
+        truth,
+        output_dir=fig_dir,
+        box_shape=model.box_shape,
+        field_size_deg=model.cmb_field_size_deg if cmb_enabled else None,
+        field_npix=model.cmb_field_npix if cmb_enabled else None,
+        chi_center=chi_center
+    )
+    print(f"✓ Saved field slices to {fig_dir}")
 
     # Validation: Power Spectra
     # We use n_realizations=1 (the current truth)
     compute_and_plot_spectra(
         model=model,
         truth_params=truth_params,
-        output_dir=config_dir,
+        output_dir=fig_dir,
         n_realizations=1,
         seed=seed,
         show=False,

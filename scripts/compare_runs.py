@@ -117,6 +117,7 @@ def main():
     # Initialize plotter
     g = plots.get_subplot_plotter()
     g.settings.legend_fontsize = 12
+    g.settings.figure_legend_loc = 'upper right'
     # Use distinct colors
     colors = ['#0072B2', '#D55E00', '#009E73', '#CC79A7'] # Accessible palette
 
@@ -131,35 +132,33 @@ def main():
 
     # ADD COLORED TITLES TO DIAGONAL PLOTS
     # Iterate over diagonal subplots
+    colors_text = ['blue', 'red', 'green', 'orange', 'purple', 'brown']
     for i, param in enumerate(common_params):
         ax = g.subplots[i, i]
         if ax is None:
             continue
 
-        # Stack titles: Run 0 at top, Run 1 below, etc.
-        # This matches the reading order of the legend usually.
-        # Base Y position for the bottom-most title
-        y_base = 1.02
-        y_step = 0.15
-
-        # We iterate in reverse to stack from bottom up, or calculate pos directly.
-        # Let's place Run 0 at y_base + (N-1)*step
+        # Position titles inside the plot area to avoid clipping
+        y_base = 0.75
+        y_step = 0.12
 
         for j, stats in enumerate(run_stats):
             if param in stats:
                 mean, sigma = stats[param]
-                col = samples_list[j].getInlineSettings()['color']
+                col = colors_text[j % len(colors_text)]
 
                 # Latex format
                 txt = f"${mean:.3f} \pm {sigma:.3f}$"
 
-                # Position: Higher index runs are lower (closer to plot), or higher?
-                # Let's put Run 0 (usually the reference) at the top.
-                y_pos = y_base + (len(run_stats) - 1 - j) * y_step
+                # Position: Run 0 at top, Run 1 below
+                y_pos = y_base - j * y_step
 
                 ax.text(0.5, y_pos, txt, transform=ax.transAxes,
-                        horizontalalignment='center', verticalalignment='bottom',
+                        horizontalalignment='center', verticalalignment='top',
                         color=col, fontsize=10)
+
+    # Adjust figure to prevent clipping
+    g.fig.subplots_adjust(top=0.95)
 
     # Ensure dir exists
 

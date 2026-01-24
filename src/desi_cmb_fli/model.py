@@ -75,53 +75,61 @@ default_config = {
             "group": "cosmo",
             "label": "{\\Omega}_m",
             "loc": 0.3,
-            "scale": 0.5,
-            "scale_fid": 0.05, # Widen to 0.05 for better exploration
-            "loc_fid": 0.3,
-            "low": 0.1,  # Omega_m < Omega_b implies nan
-            "high": 1.0,
+            "scale": 0.15,
+            "scale_fid": 0.05,
+            "loc_fid": 0.26,
+            "low": 0.10,  # Physical minimum (must be > Ω_b ≈ 0.049)
+            "high": 0.60,
         },
         "sigma8": {
             "group": "cosmo",
             "label": "{\\sigma}_8",
             "loc": 0.8,
-            "scale": 0.5,
-            "scale_fid": 0.05, # Widen to 0.05 for better exploration
-            "loc_fid": 0.8,
-            "low": 0.0,
-            "high": jnp.inf,
+            "scale": 0.15,
+            "scale_fid": 0.04,
+            "loc_fid": 0.74,
+            "low": 0.50,
+            "high": 1.10,
         },
         "b1": {
             "group": "bias",
             "label": "{b}_1",
             "loc": 1.2,
-            "scale": 0.5,
-            "scale_fid": 0.5, # Wide prior to prevent gradient squashing
-            "loc_fid": 1.2,
+            "scale": 0.7,
+            "scale_fid": 0.3,
+            "loc_fid": 0.9,
+            "low": 0.5,
+            "high": 4.0,
         },
         "b2": {
             "group": "bias",
             "label": "{b}_2",
             "loc": 0.0,
-            "scale": 1.0,
-            "scale_fid": 0.5, # Wide prior
-            "loc_fid": 0.0,
+            "scale": 2.0,
+            "scale_fid": 0.7,
+            "loc_fid": -0.5,
+            "low": -5.0,
+            "high": 5.0,
         },
         "bs2": {
             "group": "bias",
             "label": "{b}_{s^2}",
             "loc": 0.0,
-            "scale": 1.0,
-            "scale_fid": 0.5, # Wide prior
-            "loc_fid": 0.0,
+            "scale": 2.0,
+            "scale_fid": 0.7,
+            "loc_fid": 0.6,
+            "low": -5.0,
+            "high": 5.0,
         },
         "bn2": {
             "group": "bias",
             "label": "{b}_{\\nabla^2}",
             "loc": 0.0,
-            "scale": 1.0,
-            "scale_fid": 0.5, # Wide prior
-            "loc_fid": 0.0,
+            "scale": 2.0,
+            "scale_fid": 0.7,
+            "loc_fid": -0.5,
+            "low": -5.0,
+            "high": 5.0,
         },
         "init_mesh": {
             "group": "init",
@@ -558,12 +566,10 @@ class FieldLevelModel(Model):
 
             # Cache or Precompute High-Z Correction
             self.cl_high_z_cached = None
-            self.high_z_grads = None
+            self.high_z_gradients = None
 
             if self.full_los_correction:
-                # Import necessary
                 from desi_cmb_fli.cmb_lensing import compute_theoretical_cl_kappa
-                # get_cosmology is already imported globally
 
                 # 1. Compute Fiducial C_l (needed for 'fixed' and 'taylor')
                 if self.high_z_mode in ["fixed", "taylor"]:
@@ -585,20 +591,12 @@ class FieldLevelModel(Model):
                         # Theta = [Omega_m, sigma8] (params that vary)
                         Om, s8 = theta
                         # Reconstruct cosmo
-                        # Assumes fixed params (h, ns, wb) as in get_cosmology
                         c_ = get_cosmology(Omega_m=Om, sigma8=s8)
-
-                        # Recompute integration bounds (geometry) depends on cosmology
-                        chi_center_ = jc.background.radial_comoving_distance(c_, jnp.atleast_1d(self.a_obs))[0]
-                        chi_max_box_ = chi_center_ + self.box_shape[2]/2.0
-
                         chi_source_ = jc.background.radial_comoving_distance(c_, 1.0 / (1.0 + self.cmb_z_source))[0]
-
-                        # Compute Cl
                         return compute_theoretical_cl_kappa(
                             c_,
                             self.ell_grid,
-                            chi_max_box_,
+                            chi_max_box,
                             chi_source_,
                             self.cmb_z_source
                         )
@@ -610,10 +608,12 @@ class FieldLevelModel(Model):
                     jac_fn = jacfwd(get_theoretical_cl_wrapper)
                     grads = jac_fn(theta_fid) # Shape: (ell_grid_shape, 2)
 
-                    self.dCl_dOm = grads[..., 0]
-                    self.dCl_ds8 = grads[..., 1]
+                    self.high_z_gradients = {
+                        'dCl_dOm': grads[..., 0],
+                        'dCl_ds8': grads[..., 1]
+                    }
 
-                    print(f"  ✓ Gradients computed. dCl/dOm shape: {self.dCl_dOm.shape}")
+                    print(f"  ✓ Gradients computed. dCl/dOm shape: {self.high_z_gradients['dCl_dOm'].shape}")
 
 
 
@@ -760,7 +760,7 @@ class FieldLevelModel(Model):
             # CMB lensing likelihood (if enabled)
             if self.cmb_enabled and cosmology is not None and bias is not None:
                 from desi_cmb_fli.cmb_lensing import (
-                    compute_theoretical_cl_kappa,
+                    compute_cl_high_z,
                     density_field_to_convergence,
                 )
 
@@ -774,38 +774,22 @@ class FieldLevelModel(Model):
                     self.cmb_field_size_deg,
                     self.cmb_field_npix,
                     self.cmb_z_source,
-                    box_center_chi=jc.background.radial_comoving_distance(cosmology, jnp.atleast_1d(self.a_obs))[0],
+                    box_center_chi=self.box_shape[2] / 2.0,
                 )
 
+                # Compute high-z correction using centralized function
                 if self.full_los_correction:
-                    if self.high_z_mode == "fixed":
-                        cl_high_z = self.cl_high_z_cached
-
-                    elif self.high_z_mode == "taylor":
-                        # Apply first-order Taylor correction around fiducial cosmology
-                        Om_curr = cosmology.Omega_c + cosmology.Omega_b
-                        s8_curr = cosmology.sigma8
-
-                        dOm = Om_curr - self.loc_fid["Omega_m"]
-                        ds8 = s8_curr - self.loc_fid["sigma8"]
-
-                        cl_high_z = self.cl_high_z_cached + self.dCl_dOm * dOm + self.dCl_ds8 * ds8
-                        cl_high_z = jnp.maximum(cl_high_z, 0.0)
-
-                    else: # exact
-                        # Compute dynamically (expensive!)
-                        # We need to calculate chi bounds based on current cosmology
-                        chi_center_current = jc.background.radial_comoving_distance(cosmology, jnp.atleast_1d(self.a_obs))[0]
-                        chi_max_box_current = chi_center_current + self.box_shape[2] / 2.0
-
-                        chi_source_val = jc.background.radial_comoving_distance(cosmology, 1.0 / (1.0 + self.cmb_z_source))[0]
-                        cl_high_z = compute_theoretical_cl_kappa(
-                            cosmology,
-                            self.ell_grid,
-                            chi_max_box_current,
-                            chi_source_val,
-                            self.cmb_z_source
-                        )
+                    cl_high_z = compute_cl_high_z(
+                        cosmology,
+                        self.ell_grid,
+                        self.box_shape[2],  # chi_min
+                        None,  # chi_max (computed internally)
+                        self.cmb_z_source,
+                        mode=self.high_z_mode,
+                        cl_cached=self.cl_high_z_cached,
+                        gradients=self.high_z_gradients,
+                        loc_fid=self.loc_fid
+                    )
                 else:
                     cl_high_z = 0.0
 

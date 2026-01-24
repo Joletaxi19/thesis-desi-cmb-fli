@@ -12,13 +12,14 @@ import numpy as np
 from desi_cmb_fli import cmb_lensing, metrics, plot
 from desi_cmb_fli.bricks import get_cosmology
 from desi_cmb_fli.cmb_lensing import (
+    compute_cl_high_z,
     compute_theoretical_cl_gg,
     compute_theoretical_cl_kappa,
     compute_theoretical_cl_kg,
 )
 
 
-def plot_field_slices(truth, output_dir, mesh_shape=None, show=False):
+def plot_field_slices(truth, output_dir, mesh_shape=None, show=False, box_shape=None, field_size_deg=None, field_npix=None, chi_center=None):
     """
     Plot 2D slices of the generated fields (obs, kappa_obs, kappa_pred).
 
@@ -27,6 +28,10 @@ def plot_field_slices(truth, output_dir, mesh_shape=None, show=False):
         output_dir (Path or str): Output directory.
         mesh_shape (tuple): Mesh shape (optional, inferred from obs).
         show (bool): Whether to show the plot.
+        box_shape (tuple): Box size in Mpc/h (for galaxy projection).
+        field_size_deg (float): Field size in degrees (for galaxy projection).
+        field_npix (int): Number of pixels for projection.
+        chi_center (float): Comoving distance to box center (for galaxy projection).
     """
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -72,10 +77,26 @@ def plot_field_slices(truth, output_dir, mesh_shape=None, show=False):
         else:
             axes[1].axis('off')
 
-        # Galaxy projected (XY density slice as proxy)
-        im2 = axes[2].imshow(truth["obs"][..., idx], origin="lower", cmap="viridis")
-        axes[2].set_title(f"Galaxy Density Slice (z={idx})")
-        plt.colorbar(im2, ax=axes[2], label="δ")
+        # Galaxy projected using flat-sky projection (to match κ geometry)
+        if box_shape is not None and field_size_deg is not None and field_npix is not None and chi_center is not None:
+            gxy_field = np.array(truth["obs"])
+            gxy_proj = cmb_lensing.project_flat_sky(
+                gxy_field,
+                box_shape,
+                field_size_deg,
+                field_npix,
+                chi_center
+            )
+            im2 = axes[2].imshow(gxy_proj, origin="lower", cmap="viridis")
+            axes[2].set_title("Galaxy Density (projected)")
+            axes[2].set_xlabel("x [pix]")
+            axes[2].set_ylabel("y [pix]")
+            plt.colorbar(im2, ax=axes[2], label="N [counts]")
+        else:
+            # Fallback to slice if projection parameters not provided
+            im2 = axes[2].imshow(truth["obs"][..., idx], origin="lower", cmap="viridis")
+            axes[2].set_title(f"Galaxy Density Slice (z={idx})")
+            plt.colorbar(im2, ax=axes[2], label="δ")
 
         plt.tight_layout()
         plt.savefig(output_dir / "kappa_maps.png", dpi=150)
@@ -240,6 +261,32 @@ def compute_and_plot_spectra(model, truth_params, output_dir=None, n_realization
         cl_kk_theory_clean = compute_theoretical_cl_kappa(cosmo_val, jnp.array(ell_clean), chi_min, chi_max, z_source)
         cl_kg_theory_clean = compute_theoretical_cl_kg(cosmo_val, jnp.array(ell_clean), chi_min, chi_max, z_source, b1)
 
+        # Compute high-z correction using centralized function
+        cl_high_z_theory = np.zeros_like(ell_clean)
+        if model.full_los_correction:
+            # Compute high-z on native grid first
+            cl_high_z_grid = compute_cl_high_z(
+                cosmo_val,
+                model.ell_grid,
+                model.box_shape[2],  # chi_min
+                None,  # chi_max computed internally
+                z_source,
+                mode=model.high_z_mode,
+                cl_cached=model.cl_high_z_cached,
+                gradients=model.high_z_gradients,
+                loc_fid=model.loc_fid
+            )
+
+            # Interpolate to ell_clean for plotting
+            ell_grid_flat = model.ell_grid.flatten()
+            cl_high_z_flat = np.array(cl_high_z_grid).flatten()
+            sort_idx = np.argsort(ell_grid_flat)
+            ell_sorted = ell_grid_flat[sort_idx]
+            cl_sorted = cl_high_z_flat[sort_idx]
+            cl_high_z_theory = np.interp(ell_clean, ell_sorted, cl_sorted)
+
+        print(f"  High-z correction mode: {model.high_z_mode if model.full_los_correction else 'disabled'}")
+
     # Plotting
     print("Generating plots...")
     if cmb_enabled:
@@ -265,13 +312,50 @@ def compute_and_plot_spectra(model, truth_params, output_dir=None, n_realization
         plt.sca(axes[0])
         valid_idx = np.isfinite(ell) & np.isfinite(cl_kk_box_mean) & (ell > 0)
         ell_valid = ell[valid_idx]
+
+        # Always show box (no noise)
         if n_realizations > 1:
             plt.fill_between(ell_valid, (cl_kk_box_mean - cl_kk_box_std)[valid_idx], (cl_kk_box_mean + cl_kk_box_std)[valid_idx], color='blue', alpha=0.2)
-        plt.loglog(ell_valid, cl_kk_box_mean[valid_idx], '-', color='blue', lw=1.5, label=r"$C_\ell^{\kappa \kappa}$ (Mean)")
-        plt.loglog(ell_valid, cl_kk_obs_mean[valid_idx], '-', color='gray', alpha=0.7, lw=1.5, label=r"Signal + $N_\ell$")
-        plt.plot(ell_clean, np.array(cl_kk_theory_clean), '--', color='blue', alpha=0.8, lw=2, label="Theory")
-        plt.plot(ell_clean, np.array(cl_kk_theory_clean) + nell_at_ell_clean, '--', color='gray', alpha=0.8, lw=2, label=r"Theory + $N_\ell$")
-        plt.xlabel(r"$\ell$"), plt.ylabel(r"$C_\ell$"), plt.title(r"$C_\ell^{\kappa \kappa}$"), plt.legend(), plt.grid(True, alpha=0.2)
+        plt.loglog(ell_valid, cl_kk_box_mean[valid_idx], '-', color='blue', lw=1.5, label=r"$C_\ell^{\kappa \kappa}$ (box)")
+        plt.plot(ell_clean, np.array(cl_kk_theory_clean), '--', color='blue', alpha=0.8, lw=2, label="Theory (box)")
+
+        # With or without high-z correction
+        if model.full_los_correction and np.any(cl_high_z_theory > 0):
+            # Compute high-z correction and interpolate to ell_valid for obs curve
+            cl_high_z_grid = compute_cl_high_z(
+                cosmo_val,
+                model.ell_grid,
+                model.box_shape[2],
+                None,
+                z_source,
+                mode=model.high_z_mode,
+                cl_cached=model.cl_high_z_cached,
+                gradients=model.high_z_gradients,
+                loc_fid=model.loc_fid
+            )
+
+            ell_grid_flat = model.ell_grid.flatten()
+            cl_high_z_flat = np.array(cl_high_z_grid).flatten()
+            sort_idx = np.argsort(ell_grid_flat)
+            ell_sorted = ell_grid_flat[sort_idx]
+            cl_sorted = cl_high_z_flat[sort_idx]
+            cl_high_z_at_ell = np.interp(ell_valid, ell_sorted, cl_sorted)
+
+            # Measured: Box + N_ell + high-z
+            cl_kk_total_obs = cl_kk_obs_mean[valid_idx] + cl_high_z_at_ell
+            plt.loglog(ell_valid, cl_kk_total_obs, '-', color='red', lw=2,
+                       label=r"Box + $N_\ell$ + $C_\ell^{\rm high-z}$")
+
+            # Theory: Theory + N_ell + high-z
+            cl_total_theory = np.array(cl_kk_theory_clean) + nell_at_ell_clean + cl_high_z_theory
+            plt.plot(ell_clean, cl_total_theory, '--', color='red', alpha=0.8, lw=2,
+                     label=r"Theory + $N_\ell$ + $C_\ell^{\rm high-z}$")
+        else:
+            # No high-z: just show Box + N_ell and Theory + N_ell
+            plt.loglog(ell_valid, cl_kk_obs_mean[valid_idx], '-', color='gray', lw=2, label=r"Box + $N_\ell$")
+            plt.plot(ell_clean, np.array(cl_kk_theory_clean) + nell_at_ell_clean, '--', color='gray', alpha=0.8, lw=2, label=r"Theory + $N_\ell$")
+
+        plt.xlabel(r"$\ell$"), plt.ylabel(r"$C_\ell$"), plt.title(r"$C_\ell^{\kappa \kappa}$"), plt.legend(fontsize=9), plt.grid(True, alpha=0.2)
 
         ax_gg = axes[1]
     else:
@@ -300,18 +384,11 @@ def compute_and_plot_spectra(model, truth_params, output_dir=None, n_realization
     plt.subplots_adjust(bottom=0.15) # Make room for info box
 
     # Metadata Info Box
-    cell_val = "None"
-    if hasattr(model, "cell_shape"):
-         c = model.cell_shape[0] if hasattr(model.cell_shape, "__getitem__") else model.cell_shape
-         cell_val = f"{float(c):.1f}"
-    elif model_config and "cell_size" in model_config:
-         cell_val = f"{model_config['cell_size']}"
+    cell_val = float(model.cell_shape[0]) if hasattr(model, "cell_shape") else model_config.get('cell_size', 0)
+    box_x, box_y, box_z = float(model.box_shape[0]), float(model.box_shape[1]), float(model.box_shape[2])
+    mesh_x, mesh_y, mesh_z = int(model.mesh_shape[0]), int(model.mesh_shape[1]), int(model.mesh_shape[2])
 
-    # Format arrays for display
-    box_str = str(list(model.box_shape)) if hasattr(model.box_shape, "tolist") else str(model.box_shape)
-    mesh_str = str(tuple(model.mesh_shape)) if hasattr(model.mesh_shape, "tolist") else str(tuple(model.mesh_shape))
-
-    info_str = f"Box: {box_str} Mpc/h | Mesh: {mesh_str} | Cell: {cell_val} Mpc/h"
+    info_str = f"Box: [{box_x:.0f}, {box_y:.0f}, {box_z:.0f}] Mpc/h | Mesh: ({mesh_x}, {mesh_y}, {mesh_z}) | Cell: {cell_val:.1f} Mpc/h"
     if cmb_enabled:
          info_str += f" | Field: {field_size:.1f}°"
     info_str += f" | N={n_realizations}"
