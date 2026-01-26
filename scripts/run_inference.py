@@ -33,10 +33,8 @@ from desi_cmb_fli.samplers import get_mclmc_run, get_mclmc_warmup
 
 try:
     from scripts.analyze_run import analyze_run
-    from scripts.merge_batches import merge_batches
 except ImportError:
     from analyze_run import analyze_run
-    from merge_batches import merge_batches
 
 jax.config.update("jax_enable_x64", True)
 
@@ -542,14 +540,9 @@ print("\n✓ All batches complete!")
 
 # Merge batches
 print("\n" + "-" * 40)
-print("MERGING & ANALYSIS")
+print("ANALYSIS")
 print("-" * 40)
 
-print("Merging batches...")
-# config_dir is run_dir/config. merge_batches expects run_dir.
-merge_batches(run_dir)
-
-# Run Analysis
 print("\nRunning final analysis...")
 analyze_run(run_dir, burn_in=0.5)
 
