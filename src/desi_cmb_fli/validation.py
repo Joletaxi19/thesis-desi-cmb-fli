@@ -550,12 +550,6 @@ def plot_warmup_diagnostics(model, state, init_params, truth, output_dir, show=F
                 plt.show()
             plt.close()
             print(f"✓ Saved: {outfile}")
-            print("  Interpretation:")
-            print("  - Blue (init): Initial Kaiser posterior")
-            print("  - Orange (warm): After full warmup")
-            print("  - Power should approach fiducial after warmup")
-            print("  - Transfer should approach 1.0 (no bias)")
-            print("  - Coherence should be high (>0.9) for well-conditioned inference")
         else:
             print("⚠️  Warning: init_mesh not found in truth, skipping warmup diagnostic plot")
 

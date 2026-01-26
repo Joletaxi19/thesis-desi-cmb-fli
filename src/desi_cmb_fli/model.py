@@ -1009,7 +1009,7 @@ class FieldLevelModel(Model):
         chains.data["kptc"] = fn(chains.data[name])
         return chains
 
-    def kaiser_post(self, rng, delta_obs, base=False, temp=1.0):
+    def kaiser_post(self, rng, delta_obs, base=False, temp=1.0, scale_field=1.0):
         if jnp.isrealobj(delta_obs):
             delta_obs = jnp.fft.rfftn(delta_obs)
 
@@ -1019,6 +1019,8 @@ class FieldLevelModel(Model):
         )
         post_mesh = rg2cgh(jr.normal(rng, ch2rshape(means.shape)))
         post_mesh = temp**0.5 * stds * post_mesh + means
+
+        post_mesh *= scale_field
 
         init_params = self.loc_fid | {"init_mesh": post_mesh}
         if base:

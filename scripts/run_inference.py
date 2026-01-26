@@ -274,10 +274,11 @@ if not RESUME_MODE:
     # Initialize (multi-chains)
     delta_obs = truth["obs"] - 1
     rngs = jr.split(jr.key(45), num_chains)
+    scale_field = 2/3  # TODO: Try 1.0 first if fiducial close to truth
 
     # Define a wrapper to handle the method call cleanly with pmap
     def init_fn(rng, delta):
-        return model.kaiser_post(rng, delta)
+        return model.kaiser_post(rng, delta, scale_field=scale_field)
 
     init_params_ = pmap(init_fn, in_axes=(0, None))(rngs, delta_obs)
     init_mesh_ = {k: init_params_[k] for k in ["init_mesh_"]}
