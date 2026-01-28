@@ -67,7 +67,7 @@ def plot_fraction_vs_depth():
     plt.legend(loc='lower right')
     plt.ylim(0, 1.1)
 
-    output_path = 'figures/lensing_fraction_vs_z.png'
+    output_path = 'figures/lensing_fraction/lensing_fraction_vs_z.png'
     plt.savefig(output_path, dpi=150)
     print(f"✓ Plot saved to {output_path}")
 
@@ -127,7 +127,7 @@ def plot_spectra_comparison():
     ax2.legend()
 
     plt.tight_layout()
-    output_path = 'figures/lensing_spectra_comparison.png'
+    output_path = 'figures/lensing_fraction/lensing_spectra_comparison.png'
     plt.savefig(output_path, dpi=150)
     print(f"✓ Spectra comparison saved to {output_path}")
 
