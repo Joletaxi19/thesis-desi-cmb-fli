@@ -58,10 +58,12 @@ default_config = {
     "observable": "field",  # 'field', TODO: 'powspec' (with poles), 'bispec'
     "los": (0.0, 0.0, 1.0),
     "poles": (0, 2, 4),
+    "galaxies_enabled": True,  # Enable galaxy likelihood (set False for CMB-only runs)
     # CMB lensing parameters
     "cmb_enabled": False,  # Enable CMB lensing in forward model and likelihood
     "cmb_lensing_obs": None,  # Observed convergence map (set during conditioning)
     "cmb_noise_nell": None,  # Path to N_ell file or dictionary {'ell': ..., 'N_ell': ...}
+    "cmb_noise_scaling": 1.0,  # Artificial noise scaling factor (for tests: 0.01 = divide by 100)
     "cmb_field_size_deg": None,  # Angular field size in degrees (None = auto-calc from box size)
     "cmb_field_npix": None,  # Number of pixels for convergence map (None = match mesh_shape)
 
@@ -170,6 +172,8 @@ def get_model_from_config(config_or_path):
     model_config["evolution"] = cfg["model"]["evolution"]
     model_config["lpt_order"] = cfg["model"]["lpt_order"]
     model_config["gxy_density"] = cfg["model"]["gxy_density"]
+    if "galaxies_enabled" in cfg["model"]:
+        model_config["galaxies_enabled"] = cfg["model"]["galaxies_enabled"]
 
     # CMB lensing config
     cmb_cfg = cfg.get("cmb_lensing", {})
@@ -194,6 +198,8 @@ def get_model_from_config(config_or_path):
 
         if "cmb_noise_nell" in cmb_cfg:
             model_config["cmb_noise_nell"] = cmb_cfg["cmb_noise_nell"]
+        if "cmb_noise_scaling" in cmb_cfg:
+            model_config["cmb_noise_scaling"] = cmb_cfg["cmb_noise_scaling"]
 
     return FieldLevelModel(**model_config), model_config
 
@@ -453,11 +459,13 @@ class FieldLevelModel(Model):
     # Observable
     observable: str = field(default=default_config["observable"])
     gxy_density: float = field(default=default_config["gxy_density"])
+    galaxies_enabled: bool = field(default=default_config["galaxies_enabled"])
     los: tuple = field(default=default_config["los"])
     poles: tuple = field(default=default_config["poles"])
     # CMB lensing (with defaults for backward compatibility)
     cmb_lensing_obs: np.ndarray | None = field(default=default_config["cmb_lensing_obs"])
     cmb_noise_nell: str | dict | None = field(default=default_config["cmb_noise_nell"])
+    cmb_noise_scaling: float = field(default=default_config["cmb_noise_scaling"])
     cmb_field_size_deg: float | None = field(default=default_config["cmb_field_size_deg"])
     cmb_field_npix: int | None = field(default=default_config["cmb_field_npix"])
     cmb_z_source: float = field(default=default_config["cmb_z_source"])
@@ -510,6 +518,10 @@ class FieldLevelModel(Model):
         # 2*pi factors because of Fourier transform definition
         self.gxy_count = self.gxy_density * self.cell_shape.prod()
 
+        # Validation: at least one observable must be enabled
+        if not self.galaxies_enabled and not self.cmb_enabled:
+            raise ValueError("At least one observable must be enabled (galaxies_enabled or cmb_enabled)")
+
         if self.cmb_enabled:
             if self.cmb_field_size_deg is None:
                 # Box angular size at back: theta = 2 * arctan(L / 2*chi)
@@ -556,6 +568,12 @@ class FieldLevelModel(Model):
 
             ell_grid_safe = np.maximum(self.ell_grid, 1e-5)
             self.cmb_noise_power_k = np.exp(np.interp(np.log(ell_grid_safe), np.log(ell_in), np.log(nell_in)))
+
+            # Apply artificial scaling if requested (for testing sensitivity to noise level)
+            if self.cmb_noise_scaling != 1.0:
+                self.cmb_noise_power_k *= self.cmb_noise_scaling
+                print(f"\n⚠️  ARTIFICIAL NOISE SCALING APPLIED: {self.cmb_noise_scaling:.4f}")
+                print(f"   (Effective noise level: N_ell × {self.cmb_noise_scaling:.4f})")
 
             self.cmb_noise_power_k[0, 0] = np.inf  # Ignore DC mode
 
@@ -754,8 +772,13 @@ class FieldLevelModel(Model):
         """
 
         if self.observable == "field":
-            # Galaxy likelihood
-            obs_mesh = sample("obs", dist.Normal(gxy_mesh, (temp / self.gxy_count) ** 0.5))
+            # Galaxy likelihood (if enabled)
+            if self.galaxies_enabled:
+                obs_mesh = sample("obs", dist.Normal(gxy_mesh, (temp / self.gxy_count) ** 0.5))
+            else:
+                # CMB-only mode: still return something for API compatibility
+                obs_mesh = deterministic("obs_disabled", gxy_mesh)
+                print("⚠️  Galaxy likelihood DISABLED (CMB-only mode)")
 
             # CMB lensing likelihood (if enabled)
             if self.cmb_enabled and cosmology is not None and bias is not None:

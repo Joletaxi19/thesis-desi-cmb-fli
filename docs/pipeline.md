@@ -153,6 +153,42 @@ The MCLMC sampler's performance is critically dependent on the **energy variance
 
 ---
 
+## CMB Diagnostic Features
+
+### ACT DR6 Noise File
+
+**Location:** `data/N_L_kk_act_dr6_lensing_v1_baseline.txt`
+
+Contains the lensing reconstruction noise power spectrum N_ℓ^κκ for ACT Data Release 6. Format: two columns (ℓ, N_ℓ). Used in the CMB lensing likelihood to account for reconstruction noise.
+
+### Artificial Noise Scaling
+
+**Parameter:** `cmb_noise_scaling` (default: 1.0)
+
+Multiplies the CMB noise N_ell by a factor to test sensitivity to noise level.
+
+**Example:**
+```yaml
+cmb_lensing:
+  cmb_noise_scaling: 0.01  # Reduces noise by 100×
+```
+
+### CMB-Only Mode
+
+**Parameter:** `galaxies_enabled` (default: true)
+
+Allows disabling galaxy likelihood to run CMB-only inference.
+
+**Example:**
+```yaml
+model:
+  galaxies_enabled: false  # Disable galaxies
+cmb_lensing:
+  enabled: true  # Keep CMB
+```
+
+---
+
 ## Next Steps
 
 1. **Preconditioning for Joint Inference** - Incorporate CMB lensing terms into the MCLMC/MAMS preconditioning matrices for improved sampling efficiency.
