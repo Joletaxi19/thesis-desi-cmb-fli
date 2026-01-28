@@ -3,13 +3,13 @@
 
 # SLURM configuration for NERSC Perlmutter
 slurm:
-  job_name: gxyjointcmblensing-act
+  job_name: actdr6bruitreduit
   account: desi
   qos: regular
   constraint: gpu
   nodes: 1
   gpus: 4
-  time: "08:00:00"
+  time: "09:00:00"
 
 # Model configuration
 model:
@@ -18,12 +18,14 @@ model:
   evolution: lpt # lpt or nbody
   lpt_order: 2
   gxy_density: 0.0005 # LRG DESI gxy density
+  galaxies_enabled: true  # Set to false for CMB-only runs
 
 # CMB lensing configuration
 cmb_lensing:
   enabled: true
   z_source: 1100.0
   cmb_noise_nell: "/global/homes/j/jhawla/thesis-desi-cmb-fli/data/N_L_kk_act_dr6_lensing_v1_baseline.txt"
+  cmb_noise_scaling: 1.0  # Artificial scaling factor (0.01 = divide by 100, for diagnostic tests)
   full_los_correction: true
   high_z_mode: taylor
 
@@ -54,4 +56,4 @@ mcmc:
     thinning: 20
 
 # Random seed
-seed: 99
+seed: 412
