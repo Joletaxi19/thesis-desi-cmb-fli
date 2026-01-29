@@ -336,11 +336,11 @@ def compute_and_plot_spectra(model, truth_params, output_dir=None, n_realization
                     nell_ell, nell_val = np.arange(len(nell_data)), nell_data
                 else:
                     nell_ell, nell_val = nell_data[:, 0], nell_data[:, 1]
-                nell_at_ell_clean = np.interp(ell_clean, nell_ell, nell_val)
+                nell_at_ell_clean = np.interp(ell_clean, nell_ell, nell_val) * model.cmb_noise_scaling
             except Exception:
                 pass
         elif isinstance(cmb_nell_cfg, dict):
-             nell_at_ell_clean = np.interp(ell_clean, np.array(cmb_nell_cfg["ell"]), np.array(cmb_nell_cfg["N_ell"]))
+             nell_at_ell_clean = np.interp(ell_clean, np.array(cmb_nell_cfg["ell"]), np.array(cmb_nell_cfg["N_ell"])) * model.cmb_noise_scaling
 
         # Kappa Auto
         plt.sca(axes[0])
