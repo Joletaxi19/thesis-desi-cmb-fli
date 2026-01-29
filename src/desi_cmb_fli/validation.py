@@ -36,31 +36,50 @@ def plot_field_slices(truth, output_dir, mesh_shape=None, show=False, box_shape=
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    if mesh_shape is None:
-        mesh_shape = truth["obs"].shape
+    # 1. Galaxy Field Slices (XY, XZ, YZ) - only if obs is available
+    if "obs" in truth:
+        if mesh_shape is None:
+            mesh_shape = truth["obs"].shape
 
-    idx = mesh_shape[0] // 2
+        idx = mesh_shape[0] // 2
 
-    # 1. Galaxy Field Slices (XY, XZ, YZ)
-    fig, axes = plt.subplots(1, 3, figsize=(15, 4))
-    # axis=0 -> YZ (x fixed), axis=1 -> XZ (y fixed), axis=2 -> XY (z fixed)
-    titles = [f"YZ (x={idx})", f"XZ (y={idx})", f"XY (z={idx})"]
-    axes_idx = [0, 1, 2]
+        fig, axes = plt.subplots(1, 3, figsize=(15, 4))
+        # axis=0 -> YZ (x fixed), axis=1 -> XZ (y fixed), axis=2 -> XY (z fixed)
+        titles = [f"YZ (x={idx})", f"XZ (y={idx})", f"XY (z={idx})"]
+        axes_idx = [0, 1, 2]
 
-    for ax, axis_idx, title in zip(axes, axes_idx, titles, strict=False):
-        plt.sca(ax)
-        plot.plot_mesh(truth["obs"], sli=slice(idx, idx + 1), axis=axis_idx, cmap="viridis")
-        ax.set_title(title)
+        for ax, axis_idx, title in zip(axes, axes_idx, titles, strict=False):
+            plt.sca(ax)
+            plot.plot_mesh(truth["obs"], sli=slice(idx, idx + 1), axis=axis_idx, cmap="viridis")
+            ax.set_title(title)
 
-    plt.tight_layout()
-    plt.savefig(output_dir / "obs_slices.png", dpi=150)
-    if show:
-        plt.show()
-    plt.close()
+        plt.tight_layout()
+        plt.savefig(output_dir / "obs_slices.png", dpi=150)
+        if show:
+            plt.show()
+        plt.close()
+    elif mesh_shape is None and "kappa_obs" in truth:
+        # Fallback: use kappa shape if obs not available
+        mesh_shape = (truth["kappa_obs"].shape[0], truth["kappa_obs"].shape[1], truth["kappa_obs"].shape[1])
 
     # 2. CMB Convergence (if available)
     if "kappa_obs" in truth:
-        fig, axes = plt.subplots(1, 3, figsize=(18, 5))
+        # Determine number of panels based on available data
+        has_galaxy = "obs" in truth
+        has_kappa_pred = "kappa_pred" in truth
+
+        if has_galaxy:
+            # Full mode: 3 panels (kappa_obs, kappa_pred, galaxy)
+            ncols = 3
+            figsize = (18, 5)
+        else:
+            # CMB-only: 2 panels (kappa_obs, kappa_pred)
+            ncols = 2
+            figsize = (12, 5)
+
+        fig, axes = plt.subplots(1, ncols, figsize=figsize)
+        if ncols == 2:
+            axes = list(axes)
 
         # Observed kappa
         im0 = axes[0].imshow(truth["kappa_obs"], origin="lower", cmap="RdBu_r")
@@ -70,33 +89,35 @@ def plot_field_slices(truth, output_dir, mesh_shape=None, show=False, box_shape=
         plt.colorbar(im0, ax=axes[0], label="κ")
 
         # Predicted kappa (if available)
-        if "kappa_pred" in truth:
+        if has_kappa_pred:
             im1 = axes[1].imshow(truth["kappa_pred"], origin="lower", cmap="RdBu_r")
             axes[1].set_title("CMB Convergence κ (predicted)")
             plt.colorbar(im1, ax=axes[1], label="κ")
         else:
             axes[1].axis('off')
 
-        # Galaxy projected using flat-sky projection (to match κ geometry)
-        if box_shape is not None and field_size_deg is not None and field_npix is not None and chi_center is not None:
-            gxy_field = np.array(truth["obs"])
-            gxy_proj = cmb_lensing.project_flat_sky(
-                gxy_field,
-                box_shape,
-                field_size_deg,
-                field_npix,
-                chi_center
-            )
-            im2 = axes[2].imshow(gxy_proj, origin="lower", cmap="viridis")
-            axes[2].set_title("Galaxy Density (projected)")
-            axes[2].set_xlabel("x [pix]")
-            axes[2].set_ylabel("y [pix]")
-            plt.colorbar(im2, ax=axes[2], label="N [counts]")
-        else:
-            # Fallback to slice if projection parameters not provided
-            im2 = axes[2].imshow(truth["obs"][..., idx], origin="lower", cmap="viridis")
-            axes[2].set_title(f"Galaxy Density Slice (z={idx})")
-            plt.colorbar(im2, ax=axes[2], label="δ")
+        # Galaxy projected (only if available and 3-panel mode)
+        if has_galaxy:
+            if box_shape is not None and field_size_deg is not None and field_npix is not None and chi_center is not None:
+                gxy_field = np.array(truth["obs"])
+                gxy_proj = cmb_lensing.project_flat_sky(
+                    gxy_field,
+                    box_shape,
+                    field_size_deg,
+                    field_npix,
+                    chi_center
+                )
+                im2 = axes[2].imshow(gxy_proj, origin="lower", cmap="viridis")
+                axes[2].set_title("Galaxy Density (projected)")
+                axes[2].set_xlabel("x [pix]")
+                axes[2].set_ylabel("y [pix]")
+                plt.colorbar(im2, ax=axes[2], label="N [counts]")
+            else:
+                # Fallback to slice if projection parameters not provided
+                idx = truth["obs"].shape[2] // 2 if mesh_shape is None else mesh_shape[2] // 2
+                im2 = axes[2].imshow(truth["obs"][..., idx], origin="lower", cmap="viridis")
+                axes[2].set_title(f"Galaxy Density Slice (z={idx})")
+                plt.colorbar(im2, ax=axes[2], label="δ")
 
         plt.tight_layout()
         plt.savefig(output_dir / "kappa_maps.png", dpi=150)
@@ -186,21 +207,22 @@ def compute_and_plot_spectra(model, truth_params, output_dir=None, n_realization
             rng=jr.key(seed_i),
         )
 
-        # Project galaxy field
-        gxy_field = np.array(truth["obs"])
-        gxy_proj = cmb_lensing.project_flat_sky(
-            gxy_field,
-            model_config["box_shape"],
-            field_size,
-            npix if cmb_enabled else 256,
-            chi_center_val
-        )
+        # Project galaxy field (only if galaxies enabled)
+        if "obs" in truth:
+            gxy_field = np.array(truth["obs"])
+            gxy_proj = cmb_lensing.project_flat_sky(
+                gxy_field,
+                model_config["box_shape"],
+                field_size,
+                npix if cmb_enabled else 256,
+                chi_center_val
+            )
 
-        # Compute spectra
-        gxy_mean = jnp.mean(gxy_proj)
-        gxy_delta = (gxy_proj - gxy_mean) / gxy_mean
-        ell_i, cl_gg_i = metrics.get_cl_2d(gxy_delta, field_size_deg=field_size)
-        all_cl_gg.append(np.array(cl_gg_i))
+            # Compute spectra
+            gxy_mean = jnp.mean(gxy_proj)
+            gxy_delta = (gxy_proj - gxy_mean) / gxy_mean
+            ell_i, cl_gg_i = metrics.get_cl_2d(gxy_delta, field_size_deg=field_size)
+            all_cl_gg.append(np.array(cl_gg_i))
 
         if cmb_enabled:
             # Compute kappa from matter field
@@ -220,31 +242,43 @@ def compute_and_plot_spectra(model, truth_params, output_dir=None, n_realization
 
             _, cl_kk_box_i = metrics.get_cl_2d(kappa_box, field_size_deg=field_size)
             _, cl_kk_obs_i = metrics.get_cl_2d(kappa_obs, field_size_deg=field_size)
-            _, cl_kg_i = metrics.get_cl_2d(kappa_box, gxy_delta, field_size_deg=field_size)
+
+            # Compute cross-spectrum only if galaxy data available
+            if "obs" in truth:
+                _, cl_kg_i = metrics.get_cl_2d(kappa_box, gxy_delta, field_size_deg=field_size)
+                all_cl_kg.append(np.array(cl_kg_i))
 
             all_cl_kk_box.append(np.array(cl_kk_box_i))
             all_cl_kk_obs.append(np.array(cl_kk_obs_i))
-            all_cl_kg.append(np.array(cl_kg_i))
+            if ell is None:
+                ell = ell_i
 
-        if ell is None:
+        if ell is None and len(all_cl_gg) > 0:
             ell = ell_i
     print("") # Newline
 
     # Compute mean and std
-    all_cl_gg = np.array(all_cl_gg)
-    cl_gg_mean = np.nanmean(all_cl_gg, axis=0)
-    cl_gg_std = np.nanstd(all_cl_gg, axis=0)
+    if len(all_cl_gg) > 0:
+        all_cl_gg = np.array(all_cl_gg)
+        cl_gg_mean = np.nanmean(all_cl_gg, axis=0)
+        cl_gg_std = np.nanstd(all_cl_gg, axis=0)
+    else:
+        cl_gg_mean, cl_gg_std = None, None
 
     if cmb_enabled:
         all_cl_kk_box = np.array(all_cl_kk_box)
         all_cl_kk_obs = np.array(all_cl_kk_obs)
-        all_cl_kg = np.array(all_cl_kg)
 
         cl_kk_box_mean = np.nanmean(all_cl_kk_box, axis=0)
         cl_kk_box_std = np.nanstd(all_cl_kk_box, axis=0)
         cl_kk_obs_mean = np.nanmean(all_cl_kk_obs, axis=0)
-        cl_kg_mean = np.nanmean(all_cl_kg, axis=0)
-        cl_kg_std = np.nanstd(all_cl_kg, axis=0)
+
+        if len(all_cl_kg) > 0:
+            all_cl_kg = np.array(all_cl_kg)
+            cl_kg_mean = np.nanmean(all_cl_kg, axis=0)
+            cl_kg_std = np.nanstd(all_cl_kg, axis=0)
+        else:
+            cl_kg_mean, cl_kg_std = None, None
     else:
         cl_kk_box_mean, cl_kk_obs_mean, cl_kg_mean = None, None, None
 
@@ -363,20 +397,28 @@ def compute_and_plot_spectra(model, truth_params, output_dir=None, n_realization
 
     # Galaxy Auto & Cross
     plt.sca(ax_gg)
-    valid_idx_gg = np.isfinite(ell) & np.isfinite(cl_gg_mean) & (ell > 0)
-    ell_valid_gg = ell[valid_idx_gg]
-    if n_realizations > 1:
-        plt.fill_between(ell_valid_gg, (cl_gg_mean - cl_gg_std)[valid_idx_gg], (cl_gg_mean + cl_gg_std)[valid_idx_gg], color='green', alpha=0.2)
-    plt.loglog(ell_valid_gg, cl_gg_mean[valid_idx_gg], '-', color='green', lw=1.5, label=r"$C_\ell^{gg}$ (Mean)")
-    plt.plot(ell_clean, np.array(cl_gg_theory_clean), '--', color='green', alpha=0.8, lw=2, label=r"Theory $C_\ell^{gg}$")
+    if cl_gg_mean is not None:
+        valid_idx_gg = np.isfinite(ell) & np.isfinite(cl_gg_mean) & (ell > 0)
+        ell_valid_gg = ell[valid_idx_gg]
+        if n_realizations > 1:
+            plt.fill_between(ell_valid_gg, (cl_gg_mean - cl_gg_std)[valid_idx_gg], (cl_gg_mean + cl_gg_std)[valid_idx_gg], color='green', alpha=0.2)
+        plt.loglog(ell_valid_gg, cl_gg_mean[valid_idx_gg], '-', color='green', lw=1.5, label=r"$C_\ell^{gg}$ (Mean)")
+        plt.plot(ell_clean, np.array(cl_gg_theory_clean), '--', color='green', alpha=0.8, lw=2, label=r"Theory $C_\ell^{gg}$")
 
-    if cmb_enabled:
+    if cmb_enabled and cl_kg_mean is not None:
          if n_realizations > 1:
+            valid_idx_gg = np.isfinite(ell) & np.isfinite(cl_kg_mean) & (ell > 0)
+            ell_valid_gg = ell[valid_idx_gg]
             plt.fill_between(ell_valid_gg, np.abs(cl_kg_mean - cl_kg_std)[valid_idx_gg], np.abs(cl_kg_mean + cl_kg_std)[valid_idx_gg], color='red', alpha=0.2)
+         else:
+            valid_idx_gg = np.isfinite(ell) & np.isfinite(cl_kg_mean) & (ell > 0)
+            ell_valid_gg = ell[valid_idx_gg]
          plt.loglog(ell_valid_gg, np.abs(cl_kg_mean)[valid_idx_gg], '-', color='red', lw=1.5, label=r"|$C_\ell^{\kappa g}$| (Mean)")
          plt.plot(ell_clean, np.abs(np.array(cl_kg_theory_clean)), '--', color='red', alpha=0.8, lw=2, label=r"Theory |$C_\ell^{\kappa g}$|")
          plt.title(r"Galaxy Auto & Cross Spectra")
-    else:
+    elif cmb_enabled:
+         plt.title(r"CMB-only mode (no galaxy cross-spectrum)")
+    elif cl_gg_mean is None:
          plt.title(r"Galaxy Auto Power Spectrum")
 
     plt.xlabel(r"$\ell$"), plt.ylabel(r"$C_\ell$"), plt.legend(), plt.grid(True, alpha=0.2)
@@ -438,14 +480,23 @@ def plot_cmb_noise_spectrum(model, output_dir, show=False):
             # Tuple or list
             ell_in, nell_in = model.cmb_noise_nell[0], model.cmb_noise_nell[1]
 
+        # Apply scaling if present
+        nell_scaled = nell_in * model.cmb_noise_scaling
+
         # Filter for log plot
-        mask = (ell_in > 0) & (nell_in > 0)
+        mask = (ell_in > 0) & (nell_scaled > 0)
 
         plt.figure(figsize=(8, 6))
-        plot.plot_pow(ell_in[mask], nell_in[mask], log=True, ylabel=r"$N_\ell$")
-        plt.title("CMB Lensing Noise Power Spectrum")
+        plot.plot_pow(ell_in[mask], nell_scaled[mask], log=True, ylabel=r"$N_\ell$")
+
+        # Title reflects scaling
+        if model.cmb_noise_scaling != 1.0:
+            plt.title(f"CMB Lensing Noise Power Spectrum (scaled by {model.cmb_noise_scaling:.4g})")
+        else:
+            plt.title("CMB Lensing Noise Power Spectrum")
+
         plt.grid(True, which="both", ls="-", alpha=0.5)
-        plt.legend(["Input $N_\\ell$"])
+        plt.legend(["$N_\\ell$ (used in run)"])
 
         outfile = output_dir / "cmb_noise_spectrum.png"
         plt.savefig(outfile, dpi=150)

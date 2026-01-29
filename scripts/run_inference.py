@@ -28,7 +28,7 @@ from blackjax.adaptation.mclmc_adaptation import MCLMCAdaptationState
 from jax import jit, pmap, tree
 
 from desi_cmb_fli import utils
-from desi_cmb_fli.model import FieldLevelModel, default_config, get_model_from_config
+from desi_cmb_fli.model import default_config, get_model_from_config
 from desi_cmb_fli.samplers import get_mclmc_run, get_mclmc_warmup
 
 try:
@@ -109,10 +109,6 @@ if cmb_enabled:
 else:
     print("\n⚠️  CMB lensing DISABLED (galaxies only)")
 
-model = FieldLevelModel(**model_config)
-print(model)
-model.save(config_dir / "model.yaml")
-
 # Plot N_ell if CMB is enabled
 if model.cmb_enabled and model.cmb_noise_nell is not None:
     from desi_cmb_fli.validation import plot_cmb_noise_spectrum
@@ -165,9 +161,15 @@ else:
     )
     jnp.savez(config_dir / "truth.npz", **truth)
 
-    print(f"\nGalaxy obs shape: {truth['obs'].shape}")
-    print(f"Mean count: {float(jnp.mean(truth['obs'])):.4f}")
-    print(f"Std: {float(jnp.std(truth['obs'])):.4f}")
+    if model.galaxies_enabled and 'obs' in truth:
+        print(f"\nGalaxy obs shape: {truth['obs'].shape}")
+        print(f"Mean count: {float(jnp.mean(truth['obs'])):.4f}")
+        print(f"Std: {float(jnp.std(truth['obs'])):.4f}")
+
+    if model.cmb_enabled and 'kappa_obs' in truth:
+        print(f"\nCMB kappa obs shape: {truth['kappa_obs'].shape}")
+        print(f"Mean: {float(jnp.mean(truth['kappa_obs'])):.4e}")
+        print(f"Std: {float(jnp.std(truth['kappa_obs'])):.4e}")
 
     # Validation: Plot Field Slices
     print("\n" + "-" * 40)
@@ -249,12 +251,21 @@ else:
     print("   Some chains will share GPUs, which may slow down sampling significantly.")
 
 # Condition model on observations
-condition_dict = {"obs": truth["obs"]}
+condition_dict = {}
+if model.galaxies_enabled and "obs" in truth:
+    condition_dict["obs"] = truth["obs"]
+
 if cmb_enabled and "kappa_obs" in truth:
     condition_dict["kappa_obs"] = truth["kappa_obs"]
+
+if model.galaxies_enabled and cmb_enabled:
     print("\n✓ Model conditioned on galaxy obs + CMB κ obs")
-else:
+elif model.galaxies_enabled:
     print("\n✓ Model conditioned on galaxy obs only")
+elif cmb_enabled:
+    print("\n✓ Model conditioned on CMB κ obs only")
+else:
+    raise ValueError("At least one observable must be enabled")
 
 # =============================================================================
 # WARMUP (skip if resuming)
@@ -270,15 +281,29 @@ if not RESUME_MODE:
     model.block()
 
     # Initialize (multi-chains)
-    delta_obs = truth["obs"] - 1
-    rngs = jr.split(jr.key(45), num_chains)
-    scale_field = 2/3  # TODO: Try 1.0 first if fiducial close to truth
+    if model.galaxies_enabled and "obs" in truth:
+        # Use galaxy overdensity for initialization
+        delta_obs = truth["obs"] - 1
+        rngs = jr.split(jr.key(45), num_chains)
+        scale_field = 2/3  # TODO: Try 1.0 first if fiducial close to truth
 
-    # Define a wrapper to handle the method call cleanly with pmap
-    def init_fn(rng, delta):
-        return model.kaiser_post(rng, delta, scale_field=scale_field)
+        # Define a wrapper to handle the method call cleanly with pmap
+        def init_fn(rng, delta):
+            return model.kaiser_post(rng, delta, scale_field=scale_field)
 
-    init_params_ = pmap(init_fn, in_axes=(0, None))(rngs, delta_obs)
+        init_params_ = pmap(init_fn, in_axes=(0, None))(rngs, delta_obs)
+    else:
+        # CMB-only mode: initialize from fiducial with random init_mesh
+        rngs = jr.split(jr.key(45), num_chains)
+        print("\n⚠️  CMB-only: Initializing from fiducial cosmology with random init_mesh")
+
+        def init_from_fid(rng):
+            # Sample random init_mesh from prior
+            init_mesh_real = jr.normal(rng, model.mesh_shape)
+            init_mesh_k = jnp.fft.rfftn(init_mesh_real)
+            return model.loc_fid | {"init_mesh_": init_mesh_k}
+
+        init_params_ = pmap(init_from_fid)(rngs)
     init_mesh_ = {k: init_params_[k] for k in ["init_mesh_"]}
 
     # Store init params for diagnostic plot
