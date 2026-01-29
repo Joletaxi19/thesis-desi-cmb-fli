@@ -149,7 +149,7 @@ def spectrum(
 
 def get_cl_2d(map1, map2=None, field_size_deg=1.0, comp=(0, 0)):
     """
-    Compute 2D angular power spectrum C_l.
+    Compute 2D angular power spectrum C_l directly from FFT modes (no binning).
 
     Parameters
     ----------
@@ -164,30 +164,48 @@ def get_cl_2d(map1, map2=None, field_size_deg=1.0, comp=(0, 0)):
 
     Returns
     -------
-    k : array
-        Wavenumbers (ell)
+    ell : array
+        Angular wavenumbers (unique values)
     cl : array
-        Power spectrum C_l
+        Power spectrum C_l (one value per unique ell)
     """
     field_size_rad = field_size_deg * np.pi / 180.0
+    nx, ny = map1.shape
 
-    # Ensure inputs are 3D for spectrum function: (Nx, Ny, 1)
-    m1 = map1
-    if m1.ndim == 2:
-        m1 = jnp.expand_dims(m1, axis=-1)
+    # Compute FFT
+    fft1 = np.fft.fft2(map1)
+    if map2 is not None:
+        fft2 = np.fft.fft2(map2)
+        power_2d = np.real(fft1 * np.conj(fft2))
+    else:
+        power_2d = np.abs(fft1)**2
 
-    m2 = map2
-    if m2 is not None and m2.ndim == 2:
-        m2 = jnp.expand_dims(m2, axis=-1)
+    # Compute 2D wavenumbers in terms of ell
+    kx = np.fft.fftfreq(nx, d=field_size_rad / (2 * np.pi * nx))
+    ky = np.fft.fftfreq(ny, d=field_size_rad / (2 * np.pi * ny))
+    kx_2d, ky_2d = np.meshgrid(kx, ky, indexing='ij')
+    ell_2d = np.sqrt(kx_2d**2 + ky_2d**2)
 
-    box_shape = (field_size_rad, field_size_rad, 1.0)
+    # Normalize: convert to C_ell units
+    # Power in Fourier space needs to be normalized by area
+    area_sr = (field_size_rad)**2
+    cl_2d = power_2d / (nx * ny)**2 * area_sr
 
-    nx = map1.shape[0]
-    ell_nyquist = np.pi * nx / field_size_rad
-    kedges = np.geomspace(10, ell_nyquist, 50)
+    # Flatten and get unique ell values with their corresponding C_ell
+    ell_flat = ell_2d.flatten()
+    cl_flat = cl_2d.flatten()
 
-    k, cl = spectrum(m1, m2, box_shape=box_shape, kedges=list(kedges), comp=comp)
-    return k, cl
+    # Round ell to avoid floating point issues
+    ell_rounded = np.round(ell_flat, decimals=2)
+
+    # Get unique ell values and average C_ell for each
+    unique_ell = np.unique(ell_rounded)
+    cl_averaged = np.array([np.mean(cl_flat[ell_rounded == ell_val]) for ell_val in unique_ell])
+
+    # Remove ell=0 (DC mode) and very low ell if needed
+    valid_idx = unique_ell > 1.0
+
+    return unique_ell[valid_idx], cl_averaged[valid_idx]
 
 
 def transfer(mesh0, mesh1, box_shape, kedges: int | float | list = None, comp=(False, False)):

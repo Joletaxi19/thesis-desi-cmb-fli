@@ -778,7 +778,6 @@ class FieldLevelModel(Model):
             else:
                 # CMB-only mode: still return something for API compatibility
                 obs_mesh = deterministic("obs_disabled", gxy_mesh)
-                print("⚠️  Galaxy likelihood DISABLED (CMB-only mode)")
 
             # CMB lensing likelihood (if enabled)
             if self.cmb_enabled and cosmology is not None and bias is not None:
@@ -927,8 +926,14 @@ class FieldLevelModel(Model):
     def _precond_scale_and_transfer(self, cosmo: Cosmology, bE):
         """
         Return scale and transfer fields for linear matter field preconditioning.
+
+        Kaiser preconditioning uses galaxy count to model the information from galaxy observations.
+        If galaxies are disabled, gxy_count_eff = 0 → no galaxy information → standard P(k)^0.5 prior.
         """
         pmeshk = lin_power_mesh(cosmo, self.mesh_shape, self.box_shape)
+
+        # Effective galaxy count: 0 if galaxies disabled, actual count otherwise
+        gxy_count_eff = self.gxy_count if self.galaxies_enabled else 0.0
 
         if self.precond in ["direct", "fourier"]:
             scale = jnp.ones(self.mesh_shape)
@@ -939,14 +944,14 @@ class FieldLevelModel(Model):
             boost_fid = kaiser_boost(cosmo_fid, self.a_obs, bE_fid, self.mesh_shape, self.los)
             pmeshk_fid = lin_power_mesh(cosmo_fid, self.mesh_shape, self.box_shape)
 
-            scale = (1 + self.gxy_count * boost_fid**2 * pmeshk_fid) ** 0.5
+            scale = (1 + gxy_count_eff * boost_fid**2 * pmeshk_fid) ** 0.5
             transfer = pmeshk**0.5 / scale
             scale = cgh2rg(scale, norm="amp")
 
         elif self.precond == "kaiser_dyn":
             boost = kaiser_boost(cosmo, self.a_obs, bE, self.mesh_shape, self.los)
 
-            scale = (1 + self.gxy_count * boost**2 * pmeshk) ** 0.5
+            scale = (1 + gxy_count_eff * boost**2 * pmeshk) ** 0.5
             transfer = pmeshk**0.5 / scale
             scale = cgh2rg(scale, norm="amp")
 

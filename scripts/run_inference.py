@@ -95,19 +95,24 @@ model, model_config = get_model_from_config(cfg) # Passes dict directly
 print(model)
 model.save(config_dir / "model.yaml")
 
-# Check enable cmb
+# Check enabled observables
 cmb_enabled = model.cmb_enabled
+galaxies_enabled = model.galaxies_enabled
+
+if cmb_enabled and galaxies_enabled:
+    print("\n✓ Joint inference: Galaxies + CMB lensing")
+elif cmb_enabled:
+    print("\n✓ CMB lensing ENABLED (CMB-only mode)")
+elif galaxies_enabled:
+    print("\n✓ Galaxies ENABLED (galaxies-only mode)")
 
 if cmb_enabled:
-    print("\n✓ CMB lensing ENABLED (joint inference)")
     print(f"  z_source: {model.cmb_z_source}")
     if model_config.get("full_los_correction"):
-         print("✓ full_los_correction ENABLED")
+         print("  ✓ full_los_correction ENABLED")
 
     if hasattr(model, "cmb_noise_nell") and model.cmb_noise_nell is not None:
          print("  Noise: Using N_ell from config")
-else:
-    print("\n⚠️  CMB lensing DISABLED (galaxies only)")
 
 # Plot N_ell if CMB is enabled
 if model.cmb_enabled and model.cmb_noise_nell is not None:
@@ -259,11 +264,11 @@ if cmb_enabled and "kappa_obs" in truth:
     condition_dict["kappa_obs"] = truth["kappa_obs"]
 
 if model.galaxies_enabled and cmb_enabled:
-    print("\n✓ Model conditioned on galaxy obs + CMB κ obs")
+    print("\n✓ Joint inference: Galaxies + CMB lensing")
 elif model.galaxies_enabled:
-    print("\n✓ Model conditioned on galaxy obs only")
+    print("\n✓ Galaxy-only inference")
 elif cmb_enabled:
-    print("\n✓ Model conditioned on CMB κ obs only")
+    print("\n✓ CMB-only inference (galaxies disabled)")
 else:
     raise ValueError("At least one observable must be enabled")
 
@@ -298,10 +303,16 @@ if not RESUME_MODE:
         print("\n⚠️  CMB-only: Initializing from fiducial cosmology with random init_mesh")
 
         def init_from_fid(rng):
-            # Sample random init_mesh from prior
-            init_mesh_real = jr.normal(rng, model.mesh_shape)
-            init_mesh_k = jnp.fft.rfftn(init_mesh_real)
-            return model.loc_fid | {"init_mesh_": init_mesh_k}
+            # Sample random init_mesh_ in sampling space (real-valued gaussian)
+            scale, _ = model._precond_scale_and_transfer(
+                get_cosmology(**model.loc_fid),
+                1 + model.loc_fid["b1"]
+            )
+            init_mesh_samp = jr.normal(rng, scale.shape) * scale
+
+            # Reparametrize loc_fid from base space to sampling space
+            loc_fid_samp = model.reparam(model.loc_fid, inv=True)
+            return loc_fid_samp | {"init_mesh_": init_mesh_samp}
 
         init_params_ = pmap(init_from_fid)(rngs)
     init_mesh_ = {k: init_params_[k] for k in ["init_mesh_"]}
@@ -325,7 +336,8 @@ if not RESUME_MODE:
     print(f"  L (median): {float(jnp.median(config_mesh.L)):.6f}")
     print(f"  step_size (median): {float(jnp.median(config_mesh.step_size)):.6f}")
 
-    init_params_ |= state_mesh.position
+    # Update only init_mesh_ from mesh warmup, keep cosmo/bias from initial params
+    init_params_["init_mesh_"] = state_mesh.position["init_mesh_"]
 
     # STEP 2: Warmup all params
     print("\n" + "=" * 80)

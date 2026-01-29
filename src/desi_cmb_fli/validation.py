@@ -240,7 +240,7 @@ def compute_and_plot_spectra(model, truth_params, output_dir=None, n_realization
             kappa_box = jnp.asarray(kappa_box, dtype=jnp.float64)
             kappa_obs = truth['kappa_obs']
 
-            _, cl_kk_box_i = metrics.get_cl_2d(kappa_box, field_size_deg=field_size)
+            ell_i, cl_kk_box_i = metrics.get_cl_2d(kappa_box, field_size_deg=field_size)
             _, cl_kk_obs_i = metrics.get_cl_2d(kappa_obs, field_size_deg=field_size)
 
             # Compute cross-spectrum only if galaxy data available
@@ -266,12 +266,16 @@ def compute_and_plot_spectra(model, truth_params, output_dir=None, n_realization
         cl_gg_mean, cl_gg_std = None, None
 
     if cmb_enabled:
-        all_cl_kk_box = np.array(all_cl_kk_box)
-        all_cl_kk_obs = np.array(all_cl_kk_obs)
+        if len(all_cl_kk_box) > 0:
+            all_cl_kk_box = np.array(all_cl_kk_box)
+            all_cl_kk_obs = np.array(all_cl_kk_obs)
 
-        cl_kk_box_mean = np.nanmean(all_cl_kk_box, axis=0)
-        cl_kk_box_std = np.nanstd(all_cl_kk_box, axis=0)
-        cl_kk_obs_mean = np.nanmean(all_cl_kk_obs, axis=0)
+            cl_kk_box_mean = np.nanmean(all_cl_kk_box, axis=0)
+            cl_kk_box_std = np.nanstd(all_cl_kk_box, axis=0)
+            cl_kk_obs_mean = np.nanmean(all_cl_kk_obs, axis=0)
+        else:
+            cl_kk_box_mean, cl_kk_obs_mean = None, None
+            cl_kk_box_std = None
 
         if len(all_cl_kg) > 0:
             all_cl_kg = np.array(all_cl_kg)
@@ -323,9 +327,25 @@ def compute_and_plot_spectra(model, truth_params, output_dir=None, n_realization
 
     # Plotting
     print("Generating plots...")
-    if cmb_enabled:
-        fig, axes = plt.subplots(1, 2, figsize=(14, 6))
 
+    galaxies_enabled = model.galaxies_enabled if hasattr(model, 'galaxies_enabled') else (cl_gg_mean is not None)
+
+    if cmb_enabled and galaxies_enabled:
+        # Joint mode: show both CMB and galaxy panels
+        fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+        ax_kk = axes[0]
+        ax_gg = axes[1]
+    elif cmb_enabled:
+        # CMB-only mode: show only CMB panel
+        fig, ax_kk = plt.subplots(1, 1, figsize=(8, 6))
+        ax_gg = None
+    else:
+        # Galaxies-only mode: show only galaxy panel
+        fig, ax_gg = plt.subplots(1, 1, figsize=(8, 6))
+        ax_kk = None
+
+    # CMB Kappa Auto Spectrum
+    if cmb_enabled and ax_kk is not None:
         # Noise
         cmb_nell_cfg = model_config.get("cmb_noise_nell", {})
         nell_at_ell_clean = np.zeros_like(ell_clean)
@@ -343,7 +363,7 @@ def compute_and_plot_spectra(model, truth_params, output_dir=None, n_realization
              nell_at_ell_clean = np.interp(ell_clean, np.array(cmb_nell_cfg["ell"]), np.array(cmb_nell_cfg["N_ell"])) * model.cmb_noise_scaling
 
         # Kappa Auto
-        plt.sca(axes[0])
+        plt.sca(ax_kk)
         valid_idx = np.isfinite(ell) & np.isfinite(cl_kk_box_mean) & (ell > 0)
         ell_valid = ell[valid_idx]
 
@@ -391,37 +411,32 @@ def compute_and_plot_spectra(model, truth_params, output_dir=None, n_realization
 
         plt.xlabel(r"$\ell$"), plt.ylabel(r"$C_\ell$"), plt.title(r"$C_\ell^{\kappa \kappa}$"), plt.legend(fontsize=9), plt.grid(True, alpha=0.2)
 
-        ax_gg = axes[1]
-    else:
-        fig, ax_gg = plt.subplots(1, 1, figsize=(7, 6))
-
-    # Galaxy Auto & Cross
-    plt.sca(ax_gg)
-    if cl_gg_mean is not None:
-        valid_idx_gg = np.isfinite(ell) & np.isfinite(cl_gg_mean) & (ell > 0)
-        ell_valid_gg = ell[valid_idx_gg]
-        if n_realizations > 1:
-            plt.fill_between(ell_valid_gg, (cl_gg_mean - cl_gg_std)[valid_idx_gg], (cl_gg_mean + cl_gg_std)[valid_idx_gg], color='green', alpha=0.2)
-        plt.loglog(ell_valid_gg, cl_gg_mean[valid_idx_gg], '-', color='green', lw=1.5, label=r"$C_\ell^{gg}$ (Mean)")
-        plt.plot(ell_clean, np.array(cl_gg_theory_clean), '--', color='green', alpha=0.8, lw=2, label=r"Theory $C_\ell^{gg}$")
-
-    if cmb_enabled and cl_kg_mean is not None:
-         if n_realizations > 1:
-            valid_idx_gg = np.isfinite(ell) & np.isfinite(cl_kg_mean) & (ell > 0)
+    # Galaxy Auto & Cross Spectra
+    if ax_gg is not None:
+        plt.sca(ax_gg)
+        if cl_gg_mean is not None:
+            valid_idx_gg = np.isfinite(ell) & np.isfinite(cl_gg_mean) & (ell > 0)
             ell_valid_gg = ell[valid_idx_gg]
-            plt.fill_between(ell_valid_gg, np.abs(cl_kg_mean - cl_kg_std)[valid_idx_gg], np.abs(cl_kg_mean + cl_kg_std)[valid_idx_gg], color='red', alpha=0.2)
-         else:
-            valid_idx_gg = np.isfinite(ell) & np.isfinite(cl_kg_mean) & (ell > 0)
-            ell_valid_gg = ell[valid_idx_gg]
-         plt.loglog(ell_valid_gg, np.abs(cl_kg_mean)[valid_idx_gg], '-', color='red', lw=1.5, label=r"|$C_\ell^{\kappa g}$| (Mean)")
-         plt.plot(ell_clean, np.abs(np.array(cl_kg_theory_clean)), '--', color='red', alpha=0.8, lw=2, label=r"Theory |$C_\ell^{\kappa g}$|")
-         plt.title(r"Galaxy Auto & Cross Spectra")
-    elif cmb_enabled:
-         plt.title(r"CMB-only mode (no galaxy cross-spectrum)")
-    elif cl_gg_mean is None:
-         plt.title(r"Galaxy Auto Power Spectrum")
+            if n_realizations > 1:
+                plt.fill_between(ell_valid_gg, (cl_gg_mean - cl_gg_std)[valid_idx_gg], (cl_gg_mean + cl_gg_std)[valid_idx_gg], color='green', alpha=0.2)
+            plt.loglog(ell_valid_gg, cl_gg_mean[valid_idx_gg], '-', color='green', lw=1.5, label=r"$C_\ell^{gg}$ (Mean)")
+            plt.plot(ell_clean, np.array(cl_gg_theory_clean), '--', color='green', alpha=0.8, lw=2, label=r"Theory $C_\ell^{gg}$")
 
-    plt.xlabel(r"$\ell$"), plt.ylabel(r"$C_\ell$"), plt.legend(), plt.grid(True, alpha=0.2)
+        if cmb_enabled and cl_kg_mean is not None:
+            if n_realizations > 1:
+                valid_idx_gg = np.isfinite(ell) & np.isfinite(cl_kg_mean) & (ell > 0)
+                ell_valid_gg = ell[valid_idx_gg]
+                plt.fill_between(ell_valid_gg, np.abs(cl_kg_mean - cl_kg_std)[valid_idx_gg], np.abs(cl_kg_mean + cl_kg_std)[valid_idx_gg], color='red', alpha=0.2)
+            else:
+                valid_idx_gg = np.isfinite(ell) & np.isfinite(cl_kg_mean) & (ell > 0)
+                ell_valid_gg = ell[valid_idx_gg]
+            plt.loglog(ell_valid_gg, np.abs(cl_kg_mean)[valid_idx_gg], '-', color='red', lw=1.5, label=r"|$C_\ell^{\kappa g}$| (Mean)")
+            plt.plot(ell_clean, np.abs(np.array(cl_kg_theory_clean)), '--', color='red', alpha=0.8, lw=2, label=r"Theory |$C_\ell^{\kappa g}$|")
+            plt.title(r"Galaxy Auto & Cross Spectra")
+        elif cl_gg_mean is not None:
+            plt.title(r"Galaxy Auto Power Spectrum")
+
+        plt.xlabel(r"$\ell$"), plt.ylabel(r"$C_\ell$"), plt.legend(), plt.grid(True, alpha=0.2)
     plt.tight_layout()
     plt.subplots_adjust(bottom=0.15) # Make room for info box
 
