@@ -393,10 +393,9 @@ def compute_and_plot_spectra(model, truth_params, output_dir=None, n_realization
             sort_idx = np.argsort(ell_grid_flat)
             ell_sorted = ell_grid_flat[sort_idx]
             cl_sorted = cl_high_z_flat[sort_idx]
-            cl_high_z_at_ell = np.interp(ell_valid, ell_sorted, cl_sorted)
 
             # Measured: Box + N_ell + high-z
-            cl_kk_total_obs = cl_kk_obs_mean[valid_idx] + cl_high_z_at_ell
+            cl_kk_total_obs = cl_kk_obs_mean[valid_idx]
             plt.loglog(ell_valid, cl_kk_total_obs, '-', color='red', lw=2,
                        label=r"Box + $N_\ell$ + $C_\ell^{\rm high-z}$")
 
