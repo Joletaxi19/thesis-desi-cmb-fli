@@ -3,6 +3,7 @@ import jax.numpy as jnp
 import jax_cosmo as jc
 import matplotlib.pyplot as plt
 
+from desi_cmb_fli.bricks import get_cosmology
 from desi_cmb_fli.cmb_lensing import compute_theoretical_cl_kappa
 
 
@@ -10,7 +11,7 @@ def plot_fraction_vs_depth():
     print("Computing Lensing Signal Fraction...")
 
     # 1. Define Cosmology
-    cosmo = jc.Planck15(Omega_c=0.26, Omega_b=0.049, h=0.67, n_s=0.96, sigma8=0.81)
+    cosmo = get_cosmology(Omega_m=0.3, sigma8=0.8)
 
     # 2. Parameters
     z_source = 1100.0
@@ -75,7 +76,7 @@ def plot_spectra_comparison():
     print("\nComputing Lensing Spectra Comparison (Box vs Total)...")
 
     # 1. Define Cosmology
-    cosmo = jc.Planck15(Omega_c=0.26, Omega_b=0.049, h=0.67, n_s=0.96, sigma8=0.81)
+    cosmo = get_cosmology(Omega_m=0.3, sigma8=0.8)
     z_source = 1100.0
 
     # High resolution ell for smooth plot
