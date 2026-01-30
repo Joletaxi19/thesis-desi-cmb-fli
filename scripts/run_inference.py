@@ -290,7 +290,7 @@ if not RESUME_MODE:
         # Use galaxy overdensity for initialization
         delta_obs = truth["obs"] - 1
         rngs = jr.split(jr.key(45), num_chains)
-        scale_field = 2/3  # TODO: Try 1.0 first if fiducial close to truth
+        scale_field = 2/3
 
         # Define a wrapper to handle the method call cleanly with pmap
         def init_fn(rng, delta):

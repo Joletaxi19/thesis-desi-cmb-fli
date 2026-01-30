@@ -506,7 +506,7 @@ def compute_cl_high_z(cosmo, ell_grid, chi_min, chi_max, z_source,
         cl_high_z = cl_cached + gradients['dCl_dOm'] * dOm + gradients['dCl_ds8'] * ds8
 
         # Ensure non-negative
-        return jnp.maximum(cl_high_z, 0.0)
+        return jnp.maximum(cl_high_z, 1e-30)
 
     elif mode == "exact":
         # Compute chi_source for current cosmology

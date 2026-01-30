@@ -4,7 +4,7 @@ Analyze run results with custom filtering.
 Can be used as a CLI script or imported as a module.
 
 Usage:
-    python scripts/analyze_run.py --run_dir <RUN_DIR> [OPTIONS]
+    python scripts/analyze_run.py --run_dir <RUN_DIR> [--burn_in 0.5] [--exclude_chains 0 2] [--output_subdir analysis_burn50_excl0_2]
 """
 
 import argparse

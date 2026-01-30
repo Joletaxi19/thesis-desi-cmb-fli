@@ -3,7 +3,7 @@
 
 # SLURM configuration for NERSC Perlmutter
 slurm:
-  job_name: actdr6bruitreduit
+  job_name: actdr6onlyfixed
   account: desi
   qos: regular
   constraint: gpu
@@ -18,16 +18,16 @@ model:
   evolution: lpt # lpt or nbody
   lpt_order: 2
   gxy_density: 0.0005 # LRG DESI gxy density
-  galaxies_enabled: true  # Set to false for CMB-only runs
+  galaxies_enabled: false  # Set to false for CMB-only runs (for testing)
 
 # CMB lensing configuration
 cmb_lensing:
   enabled: true
   z_source: 1100.0
   cmb_noise_nell: "/global/homes/j/jhawla/thesis-desi-cmb-fli/data/N_L_kk_act_dr6_lensing_v1_baseline.txt"
-  cmb_noise_scaling: 1.0  # Artificial scaling factor (0.01 = divide by 100, for diagnostic tests)
+  cmb_noise_scaling: 1.0  # Artificial scaling factor (0.01 = divide N_l by 100, for diagnostic tests)
   full_los_correction: true
-  high_z_mode: taylor
+  high_z_mode: fixed
 
 # Truth parameters
 truth_params:
@@ -38,6 +38,51 @@ truth_params:
   b2: 0.0
   bs2: 0.0
   bn2: 0.0
+
+# Prior parameters (latents)
+latents:
+  Omega_m:
+    loc: 0.3
+    scale: 0.15
+    scale_fid: 0.05
+    loc_fid: 0.26
+    low: 0.10
+    high: 0.60
+  sigma8:
+    loc: 0.8
+    scale: 0.15
+    scale_fid: 0.04
+    loc_fid: 0.74
+    low: 0.50
+    high: 1.10
+  b1:
+    loc: 1.2
+    scale: 0.7
+    scale_fid: 0.04
+    loc_fid: 0.9
+    low: 0.5
+    high: 4.0
+  b2:
+    loc: 0.0
+    scale: 2.0
+    scale_fid: 0.7
+    loc_fid: -0.5
+    low: -5.0
+    high: 5.0
+  bs2:
+    loc: 0.0
+    scale: 2.0
+    scale_fid: 0.7
+    loc_fid: 0.6
+    low: -5.0
+    high: 5.0
+  bn2:
+    loc: 0.0
+    scale: 2.0
+    scale_fid: 0.3
+    loc_fid: -0.5
+    low: -5.0
+    high: 5.0
 
 # MCMC configuration
 mcmc:

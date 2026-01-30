@@ -201,6 +201,16 @@ def get_model_from_config(config_or_path):
         if "cmb_noise_scaling" in cmb_cfg:
             model_config["cmb_noise_scaling"] = cmb_cfg["cmb_noise_scaling"]
 
+    # Load latents from config if provided, otherwise use defaults
+    if "latents" in cfg:
+        # Merge with defaults: config values override defaults
+        merged_latents = {}
+        for param_name, default_latent in default_config["latents"].items():
+            merged_latents[param_name] = default_latent.copy()
+            if param_name in cfg["latents"]:
+                merged_latents[param_name].update(cfg["latents"][param_name])
+        model_config["latents"] = merged_latents
+
     return FieldLevelModel(**model_config), model_config
 
 
@@ -372,9 +382,10 @@ class FourierSpaceGaussian(dist.Distribution):
     arg_constraints = {"loc": dist.constraints.real, "var_k": dist.constraints.positive}
     support = dist.constraints.real
 
-    def __init__(self, loc, var_k, validate_args=None):
+    def __init__(self, loc, var_k, temp=1.0, validate_args=None):
         self.loc = loc
         self.var_k = var_k
+        self.temp = temp
         super().__init__(batch_shape=(), event_shape=loc.shape, validate_args=validate_args)
 
     def sample(self, key, sample_shape=()):
@@ -383,7 +394,7 @@ class FourierSpaceGaussian(dist.Distribution):
         eps_k = jnp.fft.fftn(eps, axes=(-2, -1))
 
         N = self.event_shape[0]
-        scale = jnp.sqrt(self.var_k) / N
+        scale = jnp.sqrt(self.var_k * self.temp) / N
         noise_k = eps_k * scale
         noise_k = noise_k.at[..., 0, 0].set(0.0)  # Zero DC mode
 
@@ -393,7 +404,20 @@ class FourierSpaceGaussian(dist.Distribution):
     def log_prob(self, value):
         diff = value - self.loc
         diff_k = jnp.fft.fftn(diff, axes=(-2, -1))
-        return -0.5 * jnp.sum(jnp.abs(diff_k)**2 / self.var_k, axis=(-2, -1))
+
+        safe_var_k = jnp.where(jnp.isinf(self.var_k), 1.0, self.var_k)
+
+        # Compute chi-squared term
+        chi2_k = jnp.abs(diff_k)**2 / safe_var_k
+        chi2_k = jnp.where(jnp.isinf(self.var_k), 0.0, chi2_k)
+
+        # Log determinant
+        log_det_k = jnp.log(safe_var_k)
+        log_det_k = jnp.where(jnp.isinf(self.var_k), 0.0, log_det_k)
+
+        total_energy = -0.5 * jnp.sum(chi2_k + log_det_k, axis=(-2, -1))
+
+        return total_energy / self.temp
 
 
 @dataclass
@@ -821,9 +845,9 @@ class FieldLevelModel(Model):
                 field_area_sr = (self.cmb_field_size_deg * jnp.pi / 180.0)**2
                 npix2 = self.cmb_field_npix**2
                 total_power_k = self.cmb_noise_power_k + cl_high_z
-                variance_k = total_power_k * (npix2**2 / field_area_sr) * temp
+                variance_k = total_power_k * (npix2**2 / field_area_sr)
 
-                sample("kappa_obs", FourierSpaceGaussian(kappa_pred, variance_k))
+                sample("kappa_obs", FourierSpaceGaussian(kappa_pred, variance_k, temp=temp))
 
             return obs_mesh  # NOTE: mesh is 1+delta_obs
 

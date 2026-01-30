@@ -52,17 +52,6 @@ squeue -u $USER
 - Config used: `$SCRATCH/outputs/run_<timestamp>/config/`
 - Samples: `$SCRATCH/outputs/run_<timestamp>/config/*.npz`
 
-### Test GPU (interactive)
-
-```bash
-salloc --nodes 1 --qos interactive --time 00:03:00 --constraint gpu --gpus 1 --account=desi
-module load cudatoolkit/12.4
-source /global/common/software/desi/users/adematti/perlmutter/cosmodesiconda/20251214-1.0.0/conda/etc/profile.d/conda.sh
-conda activate ${SCRATCH}/envs/desi-cmb-fli
-export LD_LIBRARY_PATH=$(echo ${CONDA_PREFIX}/lib/python3.11/site-packages/nvidia/*/lib | tr ' ' ':'):${LD_LIBRARY_PATH}
-python -c "import jax; print(jax.devices())"  # Should show [CudaDevice(id=0), ...]
-```
-
 ### Interactive job
 
 ```bash
