@@ -655,7 +655,7 @@ class FieldLevelModel(Model):
                         'dCl_ds8': grads[..., 1]
                     }
 
-                    print(f"  ✓ Gradients computed. dCl/dOm shape: {self.high_z_gradients['dCl_dOm'].shape}")
+                    print(f"  ✓ Gradients computed. dCl/dOm shape: {self.high_z_gradients['dCl_dOm'].shape}. dCl/ds8 shape: {self.high_z_gradients['dCl_ds8'].shape}.")
 
 
 
