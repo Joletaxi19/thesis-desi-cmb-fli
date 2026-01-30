@@ -113,6 +113,11 @@ Joint inference on synthetic galaxy + CMB lensing data to constrain cosmology an
 **Script:** `scripts/run_inference.py`
 **Implementation:**
 - **Joint Likelihood**: Combines the galaxy number density likelihood with the CMB lensing convergence ($\kappa$) likelihood.
+  - **CMB Likelihood with Full Normalization**: The CMB convergence likelihood is implemented as a Fourier-space Gaussian with proper log-determinant term:
+    $$\frac{1}{T}\ln P(\kappa_{obs}|\kappa_{pred}) = -\frac{1}{2T}\sum_{\ell} \left[\frac{|\Delta\kappa_\ell|^2}{C_\ell} + \ln C_\ell\right]$$
+    where $C_\ell = N_\ell + C_\ell^{high-z}$ is the total variance (noise + cosmic variance from unmodeled high-z contribution).
+    - The log-determinant term $\ln C_\ell$ was previously omitted because it is **constant** in galaxy-only mode (where $C_\ell = N_\ell$ fixed).
+    - However, in **taylor** and **exact** high-z modes, $C_\ell^{high-z}$ depends on cosmological parameters ($\Omega_m, \sigma_8$), making the log-determinant **parameter-dependent** and required for correct posterior normalization.
 - **Planck PR4 Noise**: Incorporates realistic reconstruction noise using the official Planck PR4 $N_\ell$ spectrum.
 - **High-z Analytical Marginalization**: Accounts for the unmodeled high-redshift ($z > z_{box}$) lensing contribution by analytically marginalizing over the missing volume.
   - The theoretical convergence power spectrum ($C_\ell^{\kappa_{high-z}}$) is computed via `jax_cosmo` using the **Non-Linear Matter Power Spectrum (Halofit)**.
@@ -186,6 +191,20 @@ model:
 cmb_lensing:
   enabled: true  # Keep CMB
 ```
+
+**Implementation Details:**
+
+- **Initialization**: Unlike joint/galaxy-only modes, CMB-only cannot use "reverse Kaiser" to initialize the density field from galaxy observations. Instead, the initial mesh is drawn from a **random Gaussian** field scaled by the prior power spectrum $P(k)$.
+
+- **Adaptive Preconditioning**: The Kaiser preconditioning automatically adapts to CMB-only mode:
+  $$\text{scale} = \sqrt{1 + n_{gal}^{eff} \cdot b_E^2 \cdot P(k)}$$
+  where $n_{gal}^{eff} = n_{gal}$ if galaxies are enabled, and $n_{gal}^{eff} = 0$ otherwise.
+
+  In CMB-only mode ($n_{gal}^{eff} = 0$):
+  - $\text{scale} = 1$ (no galaxy information)
+  - $\text{transfer} = \sqrt{P(k)}$ (standard power spectrum prior)
+
+  This ensures the prior reflects the **absence of direct density field constraints** from galaxy counts, with information coming solely from the projected $\kappa$ map.
 
 ---
 
