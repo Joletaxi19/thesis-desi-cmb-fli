@@ -8,6 +8,7 @@ import os
 import time
 from pathlib import Path
 
+import jax
 import jax.numpy as jnp
 import jax_cosmo as jc
 import matplotlib.pyplot as plt
@@ -19,6 +20,7 @@ os.environ["JAX_PLATFORMS"] = "cpu"
 from desi_cmb_fli.bricks import get_cosmology
 from desi_cmb_fli.cmb_lensing import compute_cl_high_z, compute_theoretical_cl_kappa
 
+jax.config.update("jax_enable_x64", True)
 
 def benchmark_precision():
     """
