@@ -206,6 +206,8 @@ cmb_lensing:
 
   This ensures the prior reflects the **absence of direct density field constraints** from galaxy counts, with information coming solely from the projected $\kappa$ map.
 
+> **Note:** The positive Ω_m-σ_8 correlation observed in CMB-only mode is physical, arising from large-scale lensing geometry and working with h fixed (see `figures/positive_correlation_diagnostic/`).
+
 ---
 
 ## Next Steps
