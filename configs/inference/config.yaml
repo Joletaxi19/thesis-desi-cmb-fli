@@ -3,7 +3,7 @@
 
 # SLURM configuration for NERSC Perlmutter
 slurm:
-  job_name: actdr6onlyfixed
+  job_name: gxyonly
   account: desi
   qos: regular
   constraint: gpu
@@ -15,19 +15,20 @@ slurm:
 model:
   cell_size: 15.625    # Mpc/h
   box_shape: [1000.0, 1000.0, 2000.0]  # Mpc/h [Lx, Ly, Lz]
+  galaxies_enabled: true  # Set to false for CMB-only runs
   evolution: lpt # lpt or nbody
   lpt_order: 2
   gxy_density: 0.0005 # LRG DESI gxy density
-  galaxies_enabled: false  # Set to false for CMB-only runs (for testing)
+  los: null  # Disable RSD (comment out to enable RSD)
 
 # CMB lensing configuration
 cmb_lensing:
-  enabled: true
+  enabled: false
   z_source: 1100.0
   cmb_noise_nell: "/global/homes/j/jhawla/thesis-desi-cmb-fli/data/N_L_kk_act_dr6_lensing_v1_baseline.txt"
   cmb_noise_scaling: 1.0  # Artificial scaling factor (0.01 = divide N_l by 100, for diagnostic tests)
   full_los_correction: true
-  high_z_mode: fixed
+  high_z_mode: taylor
 
 # Truth parameters
 truth_params:
