@@ -304,7 +304,6 @@ def compute_theoretical_cl_kappa(cosmo, ell, chi_min, chi_max, z_source, n_steps
 
         pk = jax.vmap(get_pk_elementwise)(k, a)
 
-        # Integrand: W^2(chi) / chi^2 * P(k, z)
         integrand = (w_val**2 / chi**2) * pk
 
         # Trapezoidal integration
