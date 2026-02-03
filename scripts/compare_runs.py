@@ -5,7 +5,7 @@ Generates a triangle plot comparing the posterior distributions of parameters.
 Supports custom burn-ins, chain exclusions, and displays constraints in the legend.
 
 Usage:
-    python scripts/compare_runs.py run1 run2 --burn_ins 0.5 0.3 --excludes "0,1" "" --labels "Run A" "Run B"
+    python scripts/compare_runs.py run1 run2 --burn_ins 0.0 0.0 --excludes "0,1" "" --labels "Run A" "Run B"
 """
 
 import argparse
@@ -32,7 +32,7 @@ def main():
     parser = argparse.ArgumentParser(description="Compare runs with GetDist")
     parser.add_argument("runs", nargs='+', help="Paths to run directories")
     parser.add_argument("--labels", nargs='+', help="Labels for the runs (default: Run 1, Run 2...)")
-    parser.add_argument("--burn_ins", nargs='+', type=float, help="Burn-in fraction per run (default: 0.5)")
+    parser.add_argument("--burn_ins", nargs='+', type=float, help="Burn-in fraction per run (default: 0.0)")
     parser.add_argument("--exclude_chains", nargs='+', help="Excluded chain indices per run (comma-separated, e.g. '0,1' '3')")
     parser.add_argument("--output", default="figures/comparison_triangle.png", help="Output filename")
 
@@ -46,7 +46,7 @@ def main():
         print(f"Warning: {len(labels)} labels provided for {n_runs} runs. Using defaults for remainder.")
         labels += [f"Run {i+1}" for i in range(len(labels), n_runs)]
 
-    burn_ins = args.burn_ins if args.burn_ins else [0.5] * n_runs
+    burn_ins = args.burn_ins if args.burn_ins else [0.0] * n_runs
     if len(burn_ins) == 1 and n_runs > 1:
         burn_ins = burn_ins * n_runs
     if len(burn_ins) != n_runs:

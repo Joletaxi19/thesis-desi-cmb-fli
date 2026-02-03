@@ -2,10 +2,10 @@
 """
 Analyze run results with custom filtering.
 Can be used as a CLI script or imported as a module.
-Burn-in by default is 50%.
+Burn-in by default is 0% (no burn-in).
 
 Usage:
-    python scripts/analyze_run.py --run_dir <RUN_DIR> [--burn_in 0.5] [--exclude_chains 0 2] [--output_subdir analysis_burn50_excl0_2]
+    python scripts/analyze_run.py --run_dir <RUN_DIR> [--burn_in 0.0] [--exclude_chains 0 2] [--output_subdir analysis_burn0_excl0_2]
 """
 
 import argparse
@@ -69,7 +69,7 @@ def _merge_batches(run_dir):
 
     return merged
 
-def load_and_process_run(run_dir, burn_in=0.5, exclude_chains=None):
+def load_and_process_run(run_dir, burn_in=0.0, exclude_chains=None):
     """
     Load samples from a run directory, apply burn-in and chain exclusion,
     and reparameterize to physical space.
@@ -200,7 +200,7 @@ def load_and_process_run(run_dir, burn_in=0.5, exclude_chains=None):
         "model_config": cfg
     }
 
-def analyze_run(run_dir, burn_in=0.5, exclude_chains=None, output_subdir=None):
+def analyze_run(run_dir, burn_in=0.0, exclude_chains=None, output_subdir=None):
     """
     Perform full analysis: load, diagnostics, plots.
 
@@ -300,7 +300,7 @@ def analyze_run(run_dir, burn_in=0.5, exclude_chains=None, output_subdir=None):
 def main():
     parser = argparse.ArgumentParser(description="Re-analyze run results with custom filtering.")
     parser.add_argument("--run_dir", required=True, type=Path, help="Path to the run directory")
-    parser.add_argument("--burn_in", type=float, default=0.5, help="Fraction of samples to discard (0.0-1.0)")
+    parser.add_argument("--burn_in", type=float, default=0.0, help="Fraction of samples to discard (0.0-1.0)")
     parser.add_argument("--exclude_chains", type=int, nargs="*", default=[], help="Indices of chains to exclude (0-indexed)")
     args = parser.parse_args()
 
