@@ -48,7 +48,7 @@ default_config = {
     "mesh_shape": 3 * (64,),  # int
     "box_shape": 3 * (320.0,),  # in Mpc/h
     # Evolution
-    "a_obs": 0.5,
+    "a_obs": 0.5, # ignored, auto-calculated
     "evolution": "lpt",  # kaiser, lpt, nbody
     "nbody_steps": 5,
     "nbody_snapshots": None,
@@ -189,12 +189,9 @@ def get_model_from_config(config_or_path):
         # High-Z mode selection
         if "high_z_mode" in cmb_cfg:
             model_config["high_z_mode"] = cmb_cfg["high_z_mode"]
-        elif "cache_high_z_cl" in cmb_cfg:
-             # Legacy support
-             model_config["high_z_mode"] = "fixed" if cmb_cfg["cache_high_z_cl"] else "exact"
         else:
             # Default
-            model_config["high_z_mode"] = "fixed"
+            model_config["high_z_mode"] = "taylor"
 
         if "cmb_noise_nell" in cmb_cfg:
             model_config["cmb_noise_nell"] = cmb_cfg["cmb_noise_nell"]
@@ -457,8 +454,8 @@ class FieldLevelModel(Model):
         Only used for 'powspec' observable.
     cmb_lensing_obs : array_like or None
         Observed CMB convergence map. If None, no CMB constraint is applied.
-    cmb_noise_std : float
-        CMB convergence noise std.
+    cmb_noise_nell : str or dict or None
+        CMB noise power spectrum N_ell. If str, path to file with two columns (ell, N_ell).
     cmb_field_size_deg : float
         Angular field size in degrees for CMB.
     cmb_field_npix : int
