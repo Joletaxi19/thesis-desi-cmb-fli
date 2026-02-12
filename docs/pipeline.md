@@ -151,6 +151,18 @@ A diagnostic script to compare **simulated spectra** against **theoretical predi
 Computes Fisher information matrices to compare the constraining power of galaxies vs CMB lensing separately:
 
 - **Separate Sensitivities**: Evaluates $\partial C_\ell / \partial \theta$ for each observable (galaxy auto-spectrum, CMB lensing spectrum)
+- **Implementation Note (2026-02)**: Uses `model.nell_grid` for CMB noise, `model.gxy_density` for $\bar n$, and enables galaxies via `model.galaxies_enabled` in `cfg['model']`.
+- **Exact formulas used in the script**:
+  - **CMB lensing (2D Fourier pixels, masked):** with
+    $$M = \{\ell: 20 < \ell \le 0.85\,\ell_{Nyq},\ \mathrm{finite}(\partial_{\Omega_m}C_\ell, C_\ell, N_\ell)\},$$
+    the script computes
+    $$F_{\Omega_m\Omega_m}^{\mathrm{CMB}} = \sum_{p\in M} \frac{1}{2}\left(\frac{\partial C_p/\partial\Omega_m}{C_p+N_p}\right)^2,$$
+    and
+    $$\sigma(\Omega_m)_{\mathrm{CMB}} = \left(F_{\Omega_m\Omega_m}^{\mathrm{CMB}}\right)^{-1/2}.$$
+  - **Galaxy clustering (Gaussian + shot noise, FKP weight):** with $P_N=1/\bar n$ and $P_{gg}(k)=b_E^2P_{mm}(k)$, the script uses the **discrete finite-volume FFT sum** on the anisotropic box lattice:
+    $$F_{\Omega_m\Omega_m}^{\mathrm{gxy}} = \frac{1}{2}\sum_{\mathbf{k}\in\mathcal{K},\,\mathbf{k}\neq0}\left[\frac{\bar n P_{gg}(k)}{1+\bar n P_{gg}(k)}\right]^2\left[\frac{\partial\ln P_{gg}(k)}{\partial\Omega_m}\right]^2,$$
+    where $\mathcal{K}$ is the exact set of discrete FFT modes $k_i=2\pi\,\mathrm{fftfreq}(N_i,d=L_i/N_i)$.
+    $$\sigma(\Omega_m)_{\mathrm{gxy}} = \left(F_{\Omega_m\Omega_m}^{\mathrm{gxy}}\right)^{-1/2}.$$
 - **Parameter Constraints**: Computes Fisher matrices and marginal uncertainties for $\Omega_m$ and $\sigma_8$
 - **Information Comparison**: Quantifies the relative information from each probe at different noise levels
 

@@ -1,11 +1,11 @@
 import os
 
 import jax.numpy as jnp
+import jax_cosmo
 import matplotlib.pyplot as plt
 import numpy as np
 import yaml
 from jax import jacfwd
-from jaxpm.growth import growth_factor
 
 from desi_cmb_fli.bricks import get_cosmology
 from desi_cmb_fli.cmb_lensing import compute_theoretical_cl_kappa
@@ -32,9 +32,9 @@ def simple_fisher(config_path="configs/inference/config.yaml"):
     if 'z_source' not in cfg['cmb_lensing']:
         cfg['cmb_lensing']['z_source'] = 1100.0
 
-    # Also enable galaxies for comparison
-    cfg['galaxies'] = cfg.get('galaxies', {})
-    cfg['galaxies']['enabled'] = True
+    # Also enable galaxies for comparison (constructor reads model.galaxies_enabled)
+    cfg['model'] = cfg.get('model', {})
+    cfg['model']['galaxies_enabled'] = True
 
     # Instantiate model to get grid geometry and noise
     model, _ = get_model_from_config(cfg)
@@ -105,38 +105,70 @@ def simple_fisher(config_path="configs/inference/config.yaml"):
     # ===== GALAXY FISHER CALCULATION (THEORETICAL) =====
     print("\nComputing galaxy Fisher information (theoretical)...")
 
-    # Growth factor derivative w.r.t. Omega_m
-    def get_growth_factor_at_z(theta):
+    b1 = loc_fid.get("b1", 2.0)  # Lagrangian bias
+    bE = 1.0 + b1  # Eulerian bias: b_E = 1 + b_L
+
+    V_survey = float(np.prod(model.box_shape))  # (Mpc/h)³
+    nbar = model.gxy_density  # galaxies per (Mpc/h)^3
+
+    box_lengths = np.asarray(model.box_shape, dtype=float)
+    mesh_sizes = np.asarray(model.mesh_shape, dtype=int)
+    k_fund_axes = 2.0 * np.pi / box_lengths
+    k_nyquist_axes = np.pi * mesh_sizes / box_lengths
+
+    # Exact anisotropic mode lattice from FFT frequencies:
+    # k_i = 2π * fftfreq(N_i, d=L_i/N_i)
+    kx = 2.0 * np.pi * np.fft.fftfreq(mesh_sizes[0], d=box_lengths[0] / mesh_sizes[0])
+    ky = 2.0 * np.pi * np.fft.fftfreq(mesh_sizes[1], d=box_lengths[1] / mesh_sizes[1])
+    kz = 2.0 * np.pi * np.fft.fftfreq(mesh_sizes[2], d=box_lengths[2] / mesh_sizes[2])
+    kx3d, ky3d, kz3d = np.meshgrid(kx, ky, kz, indexing='ij')
+    k_mag = np.sqrt(kx3d**2 + ky3d**2 + kz3d**2)
+
+    # Keep all physical non-DC modes present on the discrete lattice
+    k_modes = jnp.asarray(k_mag.ravel())
+    k_mode_mask = k_modes > 0.0
+    k_modes = k_modes[k_mode_mask]
+
+    def get_Pgg_all_k(theta):
+        """Vectorized P_gg(k) = b_E² * P_mm(k) from jax_cosmo."""
         Om, s8 = theta
         cosmo = get_cosmology(Omega_m=Om, sigma8=s8)
-        # Growth factor at a_obs (scale factor from model)
-        D_z = growth_factor(cosmo, jnp.array([model.a_obs]))[0]
-        return D_z
+        # Vectorized over all k_modes at once
+        Pmm = jnp.squeeze(jax_cosmo.power.linear_matter_power(cosmo, k_modes, a=model.a_obs))
+        return (bE**2) * Pmm
 
-    D_fid = get_growth_factor_at_z(theta_fid)
-    dD_dOm = jacfwd(get_growth_factor_at_z)(theta_fid)[0]  # Gradient w.r.t. Omega_m
+    # Compute P_gg(k) and its derivative via JAX autodiff
+    Pgg_k = get_Pgg_all_k(theta_fid)
+    dPgg_dtheta = jacfwd(get_Pgg_all_k)(theta_fid)
+    dPgg_dOm = dPgg_dtheta[..., 0]  # Derivative w.r.t Omega_m
 
-    # Galaxy bias from fiducial parameters
-    b1 = loc_fid.get("b1", 2.0)  # Default to 2.0 if not in config
+    # FKP effective-volume weight per mode: [n̄P/(1 + n̄P)]²
+    fkp_weight_sq = (nbar * Pgg_k / (1.0 + nbar * Pgg_k))**2
 
-    n_cells = int(np.prod(model.mesh_shape))
+    # Fisher integrand: (1/2) * [∂lnP/∂Ω_m]² * [n̄P/(1+n̄P)]²
+    dlnP_dOm = dPgg_dOm / Pgg_k
+    fisher_integrand = 0.5 * fkp_weight_sq * dlnP_dOm**2
 
-    # Fisher info
-    total_fisher_gxy = model.gxy_count * n_cells * (b1 * dD_dOm / D_fid)**2
+    # Discrete exact finite-volume Fisher sum:
+    # F = (1/2) * Σ_k [n̄P/(1+n̄P)]² [∂lnP/∂Ω_m]²
+    total_fisher_gxy = jnp.sum(fisher_integrand)
 
     predicted_sigma_gxy = 1.0 / jnp.sqrt(total_fisher_gxy)
 
     z_obs = 1.0/model.a_obs - 1.0
 
     print("-" * 50)
-    print(f"GALAXY RESULTS (Box: {model.box_shape[0]:.1f} Mpc/h)")
+    print(f"GALAXY RESULTS (Box shape: {tuple(model.box_shape)} Mpc/h)")
     print("-" * 50)
-    print(f"Galaxy count per cell: {model.gxy_count:.2f}")
+    print(f"Galaxy density n̄: {nbar:.4e} (Mpc/h)^-3")
+    print(f"Volume: {V_survey:.1f} (Mpc/h)^3")
     print(f"Redshift z_obs: {z_obs:.4f}")
-    print(f"Growth factor D(a={model.a_obs:.4f}): {D_fid:.4f}")
-    print(f"∂D/∂Ω_m: {dD_dOm:.4f}")
-    print(f"Galaxy bias b1: {b1:.2f}")
-    print(f"Number of cells: {n_cells}")
+    print(f"Lagrangian bias b1: {b1:.2f}")
+    print(f"Eulerian bias bE: {bE:.2f}")
+    print(f"k_fund per axis: {k_fund_axes} h/Mpc")
+    print(f"k_nyquist per axis: {k_nyquist_axes} h/Mpc")
+    print(f"Discrete k-mode count (non-DC): {k_modes.size}")
+    print(f"k range used: [{jnp.min(k_modes):.4f}, {jnp.max(k_modes):.4f}] h/Mpc")
     print(f"Total Fisher Info (Omega_m): {total_fisher_gxy:.2f}")
     print(f"Predicted 1-sigma error on Omega_m: {predicted_sigma_gxy:.5f}")
     print("-" * 50)
@@ -189,8 +221,7 @@ def simple_fisher(config_path="configs/inference/config.yaml"):
 
     # Mathematical formulas for annotation
     formula_cmb = r"$\mathbf{CMB:}\ F_{CMB} = \sum_\ell \Delta F(\ell)$"
-    # Galaxy Fisher: F = N_pix * n_bar * (b1 * dlnD/dOm)^2
-    formula_gxy = r"$\mathbf{Galaxy:}\ F_{gxy} \approx N_{pix}\, \bar{n} \left(b_1 \frac{\partial \ln D}{\partial \Omega_m}\right)^2$"
+    formula_gxy = r"$\mathbf{Galaxy:}\ F_{gxy} = \frac{1}{2}\sum_{\mathbf{k}\neq 0}\left[\frac{nP_{gg}(k)}{1+nP_{gg}(k)}\right]^2\left[\frac{\partial \ln P_{gg}(k)}{\partial\Omega_m}\right]^2$"
 
     textstr = '\n'.join((
         r'$\bf{Fisher\ Information}$',
