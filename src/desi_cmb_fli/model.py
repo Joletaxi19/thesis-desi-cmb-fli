@@ -606,20 +606,20 @@ class FieldLevelModel(Model):
             nell_in = nell_in[valid_mask]
 
             ell_grid_safe = np.maximum(self.ell_grid, 1e-5)
-            self.cmb_noise_power_k = np.exp(np.interp(np.log(ell_grid_safe), np.log(ell_in), np.log(nell_in)))
+            self.nell_grid = np.exp(np.interp(np.log(ell_grid_safe), np.log(ell_in), np.log(nell_in)))
 
             # Apply artificial scaling if requested (for testing sensitivity to noise level)
             if self.cmb_noise_scaling != 1.0:
-                self.cmb_noise_power_k *= self.cmb_noise_scaling
+                self.nell_grid *= self.cmb_noise_scaling
                 print(f"\n⚠️  ARTIFICIAL NOISE SCALING APPLIED: {self.cmb_noise_scaling:.4f}")
                 print(f"   (Effective noise level: N_ell × {self.cmb_noise_scaling:.4f})")
 
-            self.cmb_noise_power_k[0, 0] = np.inf  # Ignore DC mode
+            self.nell_grid[0, 0] = np.inf  # Ignore DC mode
 
             print("CMB Noise Model (N_ell):")
             print(f"  Input N_ell shape: {ell_in.shape}")
-            print(f"  Interpolated grid shape: {self.cmb_noise_power_k.shape}")
-            print(f"  Min/Max noise power: {self.cmb_noise_power_k.min():.2e} / {self.cmb_noise_power_k.max():.2e}")
+            print(f"  Interpolated grid shape: {self.nell_grid.shape}")
+            print(f"  Min/Max noise power: {self.nell_grid.min():.2e} / {self.nell_grid.max():.2e}")
 
             # Cache or Precompute High-Z Correction
             self.cl_high_z_cached = None
@@ -874,8 +874,8 @@ class FieldLevelModel(Model):
                 # Total variance in Fourier space
                 field_area_sr = (self.cmb_field_size_deg * jnp.pi / 180.0)**2
                 npix2 = self.cmb_field_npix**2
-                total_power_k = self.cmb_noise_power_k + cl_high_z
-                variance_k = total_power_k * (npix2**2 / field_area_sr)
+                total_power_ell = self.nell_grid + cl_high_z
+                variance_k = total_power_ell * (npix2**2 / field_area_sr)
 
                 # Mask modes beyond Nyquist (aliased frequencies) in log-prob only
                 nyquist_mask = self.ell_grid > 0.85 * self.ell_nyquist

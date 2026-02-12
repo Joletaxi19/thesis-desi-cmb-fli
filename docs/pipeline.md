@@ -117,8 +117,9 @@ Joint inference on synthetic galaxy + CMB lensing data to constrain cosmology an
     $$\frac{1}{T}\ln P(\kappa_{obs}|\kappa_{pred}) = -\frac{1}{2T}\sum_{\ell} \left[\frac{|\Delta\kappa_\ell|^2}{C_\ell} + \ln C_\ell\right]$$
     where $C_\ell = N_\ell + C_\ell^{high-z}$ is the total variance (noise + cosmic variance from unmodeled high-z contribution).
     - The log-determinant term $\ln C_\ell$ was previously omitted because it is **constant** in galaxy-only mode (where $C_\ell = N_\ell$ fixed).
-    - However, in **taylor** and **exact** high-z modes, $C_\ell^{high-z}$ depends on cosmological parameters ($\Omega_m, \sigma_8$), making the log-determinant **parameter-dependent** and required for correct posterior normalization.
-- **Planck PR4 Noise**: Incorporates realistic reconstruction noise using the official Planck PR4 $N_\ell$ spectrum.
+    - However, in **taylor** and **exact** high-z modes, $C_\ell^{high-z}$ depends on cosmological parameters ($\Omega_m, \sigma_8$), making the log-determinant **parameter-dependent** and required for correct posterior normalization.  - **Nyquist Frequency Filtering**: Modes beyond **0.85 × Nyquist frequency** are masked out in the CMB likelihood to avoid constraining with poorly-resolved scales. The Nyquist limit is computed as:
+    $$\ell_{Nyquist} = \frac{180° \times N_{pix}}{field\_size_{deg}}$$
+    Only modes with $\ell \leq 0.85 \times \ell_{Nyquist}$ contribute to the likelihood (chi-squared and log-determinant terms).- **Planck PR4 Noise**: Incorporates realistic reconstruction noise using the official Planck PR4 $N_\ell$ spectrum.
 - **High-z Analytical Marginalization**: Accounts for the unmodeled high-redshift ($z > z_{box}$) lensing contribution by analytically marginalizing over the missing volume.
   - The theoretical convergence power spectrum ($C_\ell^{\kappa_{high-z}}$) is computed via `jax_cosmo` using the **Non-Linear Matter Power Spectrum (Halofit)**.
   - This spectrum is added to the noise variance ($N_\ell + C_\ell^{\kappa_{high-z}}$) in the likelihood, correctly treating the high-z signal as an additional structured Gaussian variance (Cosmic Variance) rather than a fixed estimate.
@@ -145,6 +146,46 @@ A diagnostic script to compare **simulated spectra** against **theoretical predi
 - **Multi-Realization Support**: Averages over multiple realizations to estimate cosmic variance.
 - **Noise Overlay**: Plots `Theory + $N_\ell$` curves for direct comparison with observed spectra.
 
+#### Fisher Information Analysis (`analyze_fisher_scales.py`)
+
+Computes Fisher information matrices to compare the constraining power of galaxies vs CMB lensing separately:
+
+- **Separate Sensitivities**: Evaluates $\partial C_\ell / \partial \theta$ for each observable (galaxy auto-spectrum, CMB lensing spectrum)
+- **Parameter Constraints**: Computes Fisher matrices and marginal uncertainties for $\Omega_m$ and $\sigma_8$
+- **Information Comparison**: Quantifies the relative information from each probe at different noise levels
+
+#### Run Analysis and Comparison
+
+**`analyze_run.py`** - Analyze a single inference run:
+- Merges batch outputs into a single chain file
+- Computes convergence diagnostics (R-hat, ESS)
+- Generates corner plots and trace plots
+- Supports custom burn-in and chain exclusion
+
+**`compare_runs.py`** - Compare multiple runs with GetDist:
+- Triangle plots comparing posterior distributions
+- Automatic constraint computation (mean ± std)
+- Per-run burn-in and chain filtering
+- Customizable labels and output paths
+
+**Usage examples:**
+```bash
+# Analyze single run with 20% burn-in, excluding chains 0 and 2
+python scripts/analyze_run.py --run_dir outputs/run_001 --burn_in 0.2 --exclude_chains 0 2
+
+# Compare three runs
+python scripts/compare_runs.py outputs/run_001 outputs/run_002 outputs/run_003 \
+    --labels "Galaxies Only" "CMB Only" "Joint" --burn_ins 0.2 0.2 0.2
+```
+
+#### Benchmarking and Validation
+
+**`benchmark_highz_cl_modes.py`** - Benchmark precision and performance of high-z correction modes (fixed/taylor/exact) across different grid resolutions.
+
+**`test_omega_m_effect.py`** - Validates the positive $\Omega_m$-$\sigma_8$ correlation in CMB-only mode by testing the effect of $\Omega_m$ on lensing power spectrum.
+
+**`plot_lensing_fraction.py`** - Computes the fraction of total CMB lensing signal captured by the simulation box as a function of redshift depth.
+
 #### Energy Variance Diagnostics
 
 The MCLMC sampler's performance is critically dependent on the **energy variance** parameter (`desired_energy_var` in `config.yaml`). The script `run_inference.py` implements automatic diagnostics after warmup:
@@ -165,6 +206,8 @@ The MCLMC sampler's performance is critically dependent on the **energy variance
 **Location:** `data/N_L_kk_act_dr6_lensing_v1_baseline.txt`
 
 Contains the lensing reconstruction noise power spectrum N_ℓ^κκ for ACT Data Release 6. Format: two columns (ℓ, N_ℓ). Used in the CMB lensing likelihood to account for reconstruction noise.
+
+**Script:** `plot_cmb_noise_comparison.py` - Compares ACT DR6 vs Planck PR4 noise spectra to visualize the improvement in reconstruction noise.
 
 ### Artificial Noise Scaling
 
@@ -205,6 +248,11 @@ cmb_lensing:
   - $\text{transfer} = \sqrt{P(k)}$ (standard power spectrum prior)
 
   This ensures the prior reflects the **absence of direct density field constraints** from galaxy counts, with information coming solely from the projected $\kappa$ map.
+
+- **Optimizations**: In CMB-only mode, the pipeline automatically:
+  - Fixes bias parameters (b₁, b₂, b_s², b_∇²) to fiducial values (not sampled)
+  - Skips galaxy position and Lagrangian bias expansion calculations for computational efficiency
+  - Creates a dummy galaxy mesh for API consistency
 
 > **Note:** The positive Ω_m-σ_8 correlation observed in CMB-only mode is physical, arising from large-scale lensing geometry and working with h fixed (see `figures/positive_correlation_diagnostic/`).
 

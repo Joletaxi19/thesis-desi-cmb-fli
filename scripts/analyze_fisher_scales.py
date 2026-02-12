@@ -43,7 +43,7 @@ def simple_fisher(config_path="configs/inference/config.yaml"):
 
     # 2. Setup Variables
     ell_2d = model.ell_grid
-    noise_2d = model.cmb_noise_power_k
+    noise_2d = model.nell_grid
     loc_fid = model.loc_fid
 
     # Wrapper function for differentiation (Total C_l from z=0 to z_CMB)

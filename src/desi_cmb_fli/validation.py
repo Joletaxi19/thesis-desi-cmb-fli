@@ -506,7 +506,7 @@ def plot_cmb_noise_spectrum(model, output_dir, show=False):
         mask = (ell_in > 0) & (nell_scaled > 0)
 
         plt.figure(figsize=(8, 6))
-        plot.plot_pow(ell_in[mask], nell_scaled[mask], log=True, ylabel=r"$N_\ell$")
+        plot.plot_cl(ell_in[mask], nell_scaled[mask], log=True, ylabel=r"$N_\ell$")
 
         # Title reflects scaling
         if model.cmb_noise_scaling != 1.0:

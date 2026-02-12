@@ -208,7 +208,7 @@ def anim_scan(
 ##################
 # Power Spectrum #
 ##################
-def plot_pow(ks, pow, *args, ell=None, log=False, fill=None, ylabel=None, **kwargs):
+def plot_pow(ks, pow, *args, ell=None, log=False, fill=None, ylabel=None, xlabel=None, **kwargs):
     if ell is None:
         sub = ""
     else:
@@ -239,7 +239,10 @@ def plot_pow(ks, pow, *args, ell=None, log=False, fill=None, ylabel=None, **kwar
             plt.ylabel("$k P" + sub + "(k)$ [Mpc/$h$]$^2$")
         else:
             plt.ylabel(ylabel)
-    plt.xlabel("$k$ [$h$/Mpc]")
+    if xlabel is None:
+        plt.xlabel("$k$ [$h$/Mpc]")
+    else:
+        plt.xlabel(xlabel)
     return out
 
 
@@ -278,6 +281,51 @@ def plot_coh(ks, coh, *args, log=False, fill=None, **kwargs):
             out = plt.fill_between(ks[0], *scis.T, *args, alpha=(1 - fill) ** 0.5, **kwargs)
             plt.yscale("log")
     plt.xlabel("$k$ [$h$/Mpc]"), plt.ylabel("coherence")
+    return out
+
+
+def plot_cl(ells, cl, *args, log=True, fill=None, ylabel=None, **kwargs):
+    """
+    Plot angular power spectrum C_ell for CMB.
+
+    Parameters
+    ----------
+    ells : array
+        Multipole values
+    cl : array
+        Power spectrum C_ell values
+    log : bool
+        Use log-log plot (default: True)
+    fill : float, optional
+        Credible interval to fill
+    ylabel : str, optional
+        Y-axis label (default: appropriate C_ell label)
+    **kwargs
+        Additional arguments passed to matplotlib
+
+    Returns
+    -------
+    out : matplotlib artist
+    """
+    if log:
+        if fill is None:
+            out = plt.loglog(ells, cl, *args, **kwargs)
+        else:
+            scis = credint(cl, fill, axis=0)
+            out = plt.fill_between(ells[0], *scis.T, *args, alpha=(1 - fill) ** 0.5, **kwargs)
+            plt.xscale("log"), plt.yscale("log")
+    else:
+        if fill is None:
+            out = plt.plot(ells, cl, *args, **kwargs)
+        else:
+            scis = credint(cl, fill, axis=0)
+            out = plt.fill_between(ells[0], *scis.T, *args, alpha=(1 - fill) ** 0.5, **kwargs)
+
+    plt.xlabel(r"$\ell$")
+    if ylabel is None:
+        plt.ylabel(r"$C_\ell$")
+    else:
+        plt.ylabel(ylabel)
     return out
 
 
