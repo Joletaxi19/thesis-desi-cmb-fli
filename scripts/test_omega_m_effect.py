@@ -56,8 +56,8 @@ def check_derivative():
     ax.tick_params(labelsize=11)
 
     plt.tight_layout()
-    plt.savefig("figures/omega_m_effect.png", dpi=300, bbox_inches='tight')
-    print("Figure saved: figures/omega_m_effect.png")
+    plt.savefig("figures/positive_correlation_diagnostic/omega_m_effect.png", dpi=300, bbox_inches='tight')
+    print("Figure saved: figures/positive_correlation_diagnostic/omega_m_effect.png")
 
 if __name__ == "__main__":
     check_derivative()

@@ -149,9 +149,9 @@ def compute_and_plot_spectra(model, truth_params, output_dir=None, n_realization
         output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    print("=" * 60)
+    print("=" * 80)
     print("VALIDATION: Computing & Plotting Spectra")
-    print("=" * 60)
+    print("=" * 80)
 
     if model_config is None:
         # Fallback if model has config attribute (future proofing)
@@ -411,8 +411,8 @@ def compute_and_plot_spectra(model, truth_params, output_dir=None, n_realization
             plt.loglog(ell_valid, cl_kk_obs_mean[valid_idx], '-', color='gray', lw=2, label=r"Box + $N_\ell$")
             plt.plot(ell_clean, np.array(cl_kk_theory_clean) + nell_at_ell_clean, '--', color='gray', alpha=0.8, lw=2, label=r"Theory + $N_\ell$")
 
-        plt.axvline(ell_nyquist, color='k', linestyle='--', alpha=0.5, linewidth=1.5, label=f'$\ell_{{\\rm Nyquist}}$={ell_nyquist:.0f}')
         plt.xlabel(r"$\ell$"), plt.ylabel(r"$C_\ell$"), plt.title(r"$C_\ell^{\kappa \kappa}$"), plt.legend(fontsize=9), plt.grid(True, alpha=0.2)
+        plt.xlim(10, 0.85 * ell_nyquist)  # Cut at 0.85*Nyquist (inference limit)
 
     # Galaxy Auto & Cross Spectra
     if ax_gg is not None:
@@ -439,8 +439,8 @@ def compute_and_plot_spectra(model, truth_params, output_dir=None, n_realization
         elif cl_gg_mean is not None:
             plt.title(r"Galaxy Auto Power Spectrum")
 
-        plt.axvline(ell_nyquist, color='k', linestyle='--', alpha=0.5, linewidth=1.5, label=f'$\ell_{{\\rm Nyquist}}$={ell_nyquist:.0f}')
         plt.xlabel(r"$\ell$"), plt.ylabel(r"$C_\ell$"), plt.legend(), plt.grid(True, alpha=0.2)
+        plt.xlim(10, 0.85 * ell_nyquist)  # Cut at 0.85*Nyquist (inference limit)
     plt.tight_layout()
     plt.subplots_adjust(bottom=0.15) # Make room for info box
 

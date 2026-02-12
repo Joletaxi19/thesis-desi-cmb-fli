@@ -186,9 +186,19 @@ def load_and_process_run(run_dir, burn_in=0.0, exclude_chains=None):
         if "truth_params" in full_cfg:
             truth_vals = full_cfg["truth_params"]
 
-    # Identify available parameters
-    comp_params = ["Omega_m", "sigma8", "b1", "b2", "bs2", "bn2"]
-    available_params = [p for p in comp_params if p in physical_samples]
+    # Identify available scalar parameters (avoid showing fixed bias params in CMB-only)
+    priority_params = ["Omega_m", "sigma8", "b1", "b2", "bs2", "bn2"]
+    if model.galaxies_enabled:
+        available_params = [p for p in priority_params if p in physical_samples]
+        extra_params = [p for p in physical_samples.keys() if p not in available_params]
+        available_params += sorted(extra_params)
+    else:
+        available_params = [p for p in ["Omega_m", "sigma8"] if p in physical_samples]
+
+    # Filter chains/samples to available params only
+    physical_chains = Chains({k: physical_chains.data[k] for k in available_params},
+                             physical_chains.groups, physical_chains.labels)
+    physical_samples = {k: physical_samples[k] for k in available_params}
 
     return {
         "physical_samples": physical_samples,

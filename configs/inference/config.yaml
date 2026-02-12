@@ -3,13 +3,13 @@
 
 # SLURM configuration for NERSC Perlmutter
 slurm:
-  job_name: gxyonly
+  job_name: jointanalysis_bruitgxyaugmente100x
   account: desi
   qos: regular
   constraint: gpu
   nodes: 1
   gpus: 4
-  time: "09:00:00"
+  time: "11:00:00"
 
 # Model configuration
 model:
@@ -18,17 +18,17 @@ model:
   galaxies_enabled: true  # Set to false for CMB-only runs
   evolution: lpt # lpt or nbody
   lpt_order: 2
-  gxy_density: 0.0005 # LRG DESI gxy density
-  los: null  # Disable RSD (comment out to enable RSD)
+  gxy_density: 0.000005 # LRG DESI gxy density : 0.0005
+  # los: null  # Disable RSD (comment out to enable RSD)
 
 # CMB lensing configuration
 cmb_lensing:
-  enabled: false
+  enabled: true
   z_source: 1100.0
   cmb_noise_nell: "/global/homes/j/jhawla/thesis-desi-cmb-fli/data/N_L_kk_act_dr6_lensing_v1_baseline.txt"
-  cmb_noise_scaling: 1.0  # Artificial scaling factor (0.01 = divide N_l by 100, for diagnostic tests)
+  cmb_noise_scaling: 1.0  # Artificial scaling factor (0.01 = divide N_l by 100)
   full_los_correction: true
-  high_z_mode: taylor
+  high_z_mode: taylor # Options: exact, fixed, taylor
 
 # Truth parameters
 truth_params:
@@ -91,13 +91,13 @@ mcmc:
 
   # Sampling
   num_samples: 500
-  num_batches: 15
+  num_batches: 13
   num_chains: 4
 
   save_large_fields: false
 
   mclmc:
-    desired_energy_var: 0.0000005
+    desired_energy_var: 0.0000005 # Value which work well for realistic runs : 0.0000005
     diagonal_preconditioning: true
     thinning: 20
 

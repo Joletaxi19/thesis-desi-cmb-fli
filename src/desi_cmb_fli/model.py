@@ -347,9 +347,16 @@ class Model:
         Precedence is given according to the order: hide_fn, hide, expose_types, expose, (hide_base, hide_det).
         Only the set of parameters with the precedence is considered.
         The default call thus hides base and other deterministic sites, for sampling purposes.
+
+        In CMB-only mode, bias parameters (b1_, b2_, bs2_, bn2_) are automatically hidden
+        since they are fixed to fiducial values and not sampled.
         """
         if all(x is None for x in (hide_fn, hide, expose_types, expose)):
             self.model = self._block_det(self.model, hide_base=hide_base, hide_det=hide_det)
+
+            if self.cmb_enabled and not self.galaxies_enabled:
+                bias_params_sample = [k + "_" for k in self.groups["bias"]]
+                self.model = block(self.model, hide=bias_params_sample)
         else:
             self.model = block(
                 self.model, hide_fn=hide_fn, hide=hide, expose_types=expose_types, expose=expose
@@ -379,10 +386,11 @@ class FourierSpaceGaussian(dist.Distribution):
     arg_constraints = {"loc": dist.constraints.real, "var_k": dist.constraints.positive}
     support = dist.constraints.real
 
-    def __init__(self, loc, var_k, temp=1.0, validate_args=None):
+    def __init__(self, loc, var_k, temp=1.0, mask=None, validate_args=None):
         self.loc = loc
         self.var_k = var_k
         self.temp = temp
+        self.mask = mask
         super().__init__(batch_shape=(), event_shape=loc.shape, validate_args=validate_args)
 
     def sample(self, key, sample_shape=()):
@@ -403,14 +411,20 @@ class FourierSpaceGaussian(dist.Distribution):
         diff_k = jnp.fft.fftn(diff, axes=(-2, -1))
 
         safe_var_k = jnp.where(jnp.isinf(self.var_k), 1.0, self.var_k)
+        if self.mask is not None:
+            weight = jnp.where(self.mask, 0.0, 1.0)
+        else:
+            weight = 1.0
 
         # Compute chi-squared term
         chi2_k = jnp.abs(diff_k)**2 / safe_var_k
         chi2_k = jnp.where(jnp.isinf(self.var_k), 0.0, chi2_k)
+        chi2_k = chi2_k * weight
 
         # Log determinant
         log_det_k = jnp.log(safe_var_k)
         log_det_k = jnp.where(jnp.isinf(self.var_k), 0.0, log_det_k)
+        log_det_k = log_det_k * weight
 
         total_energy = -0.5 * jnp.sum(chi2_k + log_det_k, axis=(-2, -1))
 
@@ -580,6 +594,10 @@ class FieldLevelModel(Model):
             lx, ly = np.meshgrid(freq_y, freq_x, indexing='ij')
             self.ell_grid = np.sqrt(lx**2 + ly**2)  # Store ell_grid for high-z calculation
 
+            # Nyquist limit: max well-defined ell for this resolution
+            self.ell_nyquist = 180.0 * self.cmb_field_npix / self.cmb_field_size_deg
+            print(f"CMB ell_nyquist: {self.ell_nyquist:.1f}")
+
             # Log-log interpolation of N_ell
             ell_in = np.asarray(ell_in)
             nell_in = np.asarray(nell_in)
@@ -689,13 +707,22 @@ class FieldLevelModel(Model):
 
         Return base parameters, as reparametrization of sample parameters.
         """
-        # Sample, reparametrize, and register cosmology and biases
-        tup = ()
-        for g in ["cosmo", "bias"]:
-            dic = self._sample(self.groups[g])  # sample
-            dic = samp2base(dic, self.latents, inv=False, temp=temp)  # reparametrize
-            tup += ({k: deterministic(k, v) for k, v in dic.items()},)  # register base params
-        cosmo, bias = tup
+        # Sample, reparametrize, and register cosmology
+        cosmo_ = self._sample(self.groups["cosmo"])
+        cosmo_ = samp2base(cosmo_, self.latents, inv=False, temp=temp)
+        cosmo = {k: deterministic(k, v) for k, v in cosmo_.items()}
+
+        # Bias parameters: fix to fiducial in CMB-only mode (unconstrained by data)
+        if self.cmb_enabled and not self.galaxies_enabled:
+            bias = {
+                k: deterministic(k, jnp.asarray(self.loc_fid[k]))
+                for k in self.groups["bias"]
+            }
+        else:
+            bias_ = self._sample(self.groups["bias"])
+            bias_ = samp2base(bias_, self.latents, inv=False, temp=temp)
+            bias = {k: deterministic(k, v) for k, v in bias_.items()}
+
         cosmology = get_cosmology(**cosmo)
 
         # Sample, reparametrize, and register initial conditions
@@ -730,10 +757,6 @@ class FieldLevelModel(Model):
         # Create regular grid of particles
         pos = jnp.indices(self.mesh_shape, dtype=float).reshape(3, -1).T
 
-        # Lagrangian bias expansion weights at a_obs (but based on initial particules positions)
-        lbe_weights = lagrangian_weights(cosmology, self.a_obs, pos, self.box_shape, **bias, **init)
-        # TODO: gaussian lagrangian weights
-
         if self.evolution == "lpt":
             # LPT displacement at a_lpt
             # NOTE: lpt assumes given mesh follows linear spectral power at a=1, and then correct by growth factor for target a_lpt
@@ -765,22 +788,32 @@ class FieldLevelModel(Model):
             part = deterministic("nbody_pos", pos), vel
             pos, vel = tree.map(lambda x: x[-1], part)
 
-        # Preserve real-space positions for matter field painting
+        # Preserve real-space positions for matter field painting (always needed for CMB)
         pos_real = pos
 
-        # RSD displacement at a_obs
-        pos += rsd(cosmology, self.a_obs, vel, self.los)
-        pos, vel = deterministic("rsd_pos", pos), vel
-
-        # CIC paint weighted by Lagrangian bias expansion weights
-        gxy_mesh = cic_paint(jnp.zeros(self.mesh_shape), pos, lbe_weights)
-        gxy_mesh = deconv_paint(gxy_mesh, order=2)
-        gxy_mesh = deterministic("gxy_mesh", gxy_mesh)
-        # Paint unbiased matter field in real space (before RSD)
+        # Paint unbiased matter field in real space (always needed for CMB lensing)
         matter_mesh = cic_paint(jnp.zeros(self.mesh_shape), pos_real)
         matter_mesh = deconv_paint(matter_mesh, order=2)
         matter_mesh = matter_mesh / jnp.mean(matter_mesh)
         matter_mesh = deterministic("matter_mesh", matter_mesh)
+
+        # Galaxy-specific calculations (skip if galaxies disabled for efficiency)
+        if self.galaxies_enabled:
+            # Lagrangian bias expansion weights at a_obs (but based on initial particules positions)
+            pos_initial = jnp.indices(self.mesh_shape, dtype=float).reshape(3, -1).T
+            lbe_weights = lagrangian_weights(cosmology, self.a_obs, pos_initial, self.box_shape, **bias, **init)
+
+            # RSD displacement at a_obs
+            pos_rsd = pos + rsd(cosmology, self.a_obs, vel, self.los)
+            pos_rsd = deterministic("rsd_pos", pos_rsd)
+
+            # CIC paint weighted by Lagrangian bias expansion weights
+            gxy_mesh = cic_paint(jnp.zeros(self.mesh_shape), pos_rsd, lbe_weights)
+            gxy_mesh = deconv_paint(gxy_mesh, order=2)
+            gxy_mesh = deterministic("gxy_mesh", gxy_mesh)
+        else:
+            # CMB-only: create dummy gxy_mesh for API consistency
+            gxy_mesh = jnp.zeros(self.mesh_shape)
 
         return {"gxy_mesh": gxy_mesh, "matter_mesh": matter_mesh}
 
@@ -844,13 +877,16 @@ class FieldLevelModel(Model):
                 total_power_k = self.cmb_noise_power_k + cl_high_z
                 variance_k = total_power_k * (npix2**2 / field_area_sr)
 
-                sample("kappa_obs", FourierSpaceGaussian(kappa_pred, variance_k, temp=temp))
+                # Mask modes beyond Nyquist (aliased frequencies) in log-prob only
+                nyquist_mask = self.ell_grid > 0.85 * self.ell_nyquist
+
+                sample("kappa_obs", FourierSpaceGaussian(kappa_pred, variance_k, temp=temp, mask=nyquist_mask))
 
             return obs_mesh  # NOTE: mesh is 1+delta_obs
 
     def reparam(self, params: dict, fourier=True, inv=False, temp=1.0):
         """
-        Transform sample params into base params.
+        Transform sample params into base params (inv=False) or vice versa (inv=True).
         """
         # Extract groups from params
         groups = ["cosmo", "bias", "init"]
@@ -859,16 +895,28 @@ class FieldLevelModel(Model):
         )
         params = Chains(params, self.groups | self.groups_).get(key)  # use chain querying
         cosmo_, bias_, init, rest = (q.data for q in params)
-        # cosmo_, bias, init = self._get_by_groups(params, ['cosmo','bias','init'], base=inv)
 
-        # Cosmology and Biases
+        # Cosmology
         cosmo = samp2base(cosmo_, self.latents, inv=inv, temp=temp)
-        bias = samp2base(bias_, self.latents, inv=inv, temp=temp)
+
+        # Biases
+        if inv and self.cmb_enabled and not self.galaxies_enabled:
+            bias = {}
+        elif len(bias_) > 0:
+            bias = samp2base(bias_, self.latents, inv=inv, temp=temp)
+        else:
+            bias = {k: self.loc_fid[k] for k in self.groups["bias"]}
 
         # Initial conditions
         if len(init) > 0:
             cosmology = get_cosmology(**(cosmo_ if inv else cosmo))
-            bE = 1 + (bias_["b1"] if inv else bias["b1"])
+
+            if self.cmb_enabled and not self.galaxies_enabled:
+                bE = 1 + self.loc_fid["b1"]
+            elif inv:
+                bE = 1 + bias_["b1"]
+            else:
+                bE = 1 + bias["b1"]
             _, transfer = self._precond_scale_and_transfer(cosmology, bE)
 
             if not fourier and inv:
