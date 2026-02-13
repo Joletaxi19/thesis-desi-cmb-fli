@@ -290,14 +290,15 @@ def compute_and_plot_spectra(model, truth_params, output_dir=None, n_realization
     print("Computing theoretical spectra...")
     chi_min, chi_max = 1.0, float(model.box_shape[2])
     z_source = model.cmb_z_source
-    b1 = truth_params.get("b1", 1.0)
+    b1_lag = truth_params.get("b1", 1.0)
+    bE = 1.0 + b1_lag
 
     ell_clean = np.geomspace(10, 2000, 100)
-    cl_gg_theory_clean = compute_theoretical_cl_gg(cosmo_val, jnp.array(ell_clean), chi_min, chi_max, b1)
+    cl_gg_theory_clean = compute_theoretical_cl_gg(cosmo_val, jnp.array(ell_clean), chi_min, chi_max, bE)
 
     if cmb_enabled:
         cl_kk_theory_clean = compute_theoretical_cl_kappa(cosmo_val, jnp.array(ell_clean), chi_min, chi_max, z_source)
-        cl_kg_theory_clean = compute_theoretical_cl_kg(cosmo_val, jnp.array(ell_clean), chi_min, chi_max, z_source, b1)
+        cl_kg_theory_clean = compute_theoretical_cl_kg(cosmo_val, jnp.array(ell_clean), chi_min, chi_max, z_source, bE)
 
         # Compute high-z correction using centralized function
         cl_high_z_theory = np.zeros_like(ell_clean)
