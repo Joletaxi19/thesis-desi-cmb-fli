@@ -12,6 +12,7 @@ from jax_cosmo import Cosmology
 
 from desi_cmb_fli.cmb_lensing import (
     density_field_to_convergence,
+    lensing_kernel,
 )
 
 jax.config.update("jax_enable_x64", True)
@@ -223,6 +224,14 @@ def test_convergence_gradient(test_cosmology, test_density_field):
 
     assert grad.shape == test_density_field.shape
     assert jnp.all(jnp.isfinite(grad)), "Gradient contains NaN or Inf"
+
+
+def test_lensing_kernel_depends_on_scale_factor(test_cosmology):
+    chi = 500.0
+    chi_s = 3000.0
+    w_a1 = lensing_kernel(test_cosmology, chi, 1.0, chi_s)
+    w_a05 = lensing_kernel(test_cosmology, chi, 0.5, chi_s)
+    assert w_a05 > w_a1
 
 
 if __name__ == "__main__":

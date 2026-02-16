@@ -16,6 +16,9 @@ model:
   cell_size: 15.625    # Mpc/h
   box_shape: [1000.0, 1000.0, 2000.0]  # Mpc/h [Lx, Ly, Lz]
   galaxies_enabled: true  # Set to false for CMB-only runs
+  lightcone: true
+  a_obs: null
+  curved_sky: true
   evolution: lpt # lpt or nbody
   lpt_order: 2
   gxy_density: 0.000005 # LRG DESI gxy density : 0.0005

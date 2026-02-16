@@ -180,16 +180,11 @@ else:
     print("\n" + "-" * 40)
     print("VALIDATION: Field Slices")
     print("-" * 40)
-    import jax_cosmo as jc
-
     from desi_cmb_fli.bricks import get_cosmology
     from desi_cmb_fli.validation import compute_and_plot_spectra, plot_field_slices
 
     # Compute chi_center for projection (needed for galaxy projection in kappa_maps)
-    cosmo_truth = get_cosmology(**truth_params)
-    chi_center = float(jc.background.radial_comoving_distance(
-        cosmo_truth, jnp.atleast_1d(model.a_obs)
-    )[0])
+    chi_center = float(model.box_center[2]) if hasattr(model, "box_center") else float(model.box_shape[2] / 2.0)
 
     plot_field_slices(
         truth,
@@ -484,7 +479,7 @@ if RESUME_MODE and start_batch > 0:
         "init_mesh_", "init_mesh",
         "gxy_mesh", "matter_mesh",
         "lpt_pos", "rsd_pos", "nbody_pos",
-        "obs"
+        "a_part", "obs"
     }
     for batch_idx in range(start_batch):
         batch_file = config_dir / f"samples_batch_{batch_idx}.npz"
@@ -517,7 +512,7 @@ for batch_idx in range(start_batch, num_batches):
             "init_mesh_", "init_mesh",
             "gxy_mesh", "matter_mesh",
             "lpt_pos", "rsd_pos", "nbody_pos",
-            "obs"
+            "a_part", "obs"
         }
         scalar_params = [p for p in param_names if p not in large_params]
 

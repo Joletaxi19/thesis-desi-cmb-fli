@@ -130,8 +130,20 @@ Joint inference on synthetic galaxy + CMB lensing data to constrain cosmology an
 - **Angle Calibration (Gnomonic Projection)**: The angular field of view is calculated using exact trigonometry: $\theta = 2 \arctan(L_{trans} / 2\chi_{back})$.
   - This replaces the linear approximation ($\theta \approx L/\chi$) which introduced an error.
   - The Ray-Tracing module uses a tangent-plane projection ($x = \chi \tan(\theta)$) to accurately map the rectilinear simulation box onto the angular grid.
-- **Geometry Enforcement**: The model unconditionaly enforces $z_{min}=0$ (Observer at the box face).
 - **Even Mesh Dimensions (MCLMC Requirement)**: The mesh dimensions are automatically adjusted to ensure all axes have an **even number of cells**.
+
+### Lightcone Implementation Details
+
+- **Geometry convention**: observer at $\chi=0$ (box face), simulation center at $\chi=L_z/2$.
+- **Lightcone evolution**: each particle/voxel evolves at local scale factor $a(\chi)$.
+- **Galaxy model**:
+  - LPT uses particle-wise `a`.
+  - Lagrangian bias terms are evaluated with local growth.
+  - RSD uses local LOS and local `a` per particle.
+- **Kaiser model**: supports both snapshot (scalar `a`) and lightcone (`a(\mathbf{x})`), including LOS fields for curved-sky galaxy clustering.
+- **CMB lensing**: kernel is evaluated per slice as $W_\kappa(\chi,a)$ with slice-dependent scale factor.
+- **Curved-sky scope**: implemented for galaxy clustering only; CMB lensing remains flat-sky Born projection.
+- **N-body scope**: lightcone mode is implemented for LPT; N-body remains snapshot-only.
 
 ### Diagnostic Tools
 

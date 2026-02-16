@@ -139,3 +139,24 @@ def test_lpt_order2_includes_second_order_correction():
     # 2LPT should differ from 1LPT
     assert not jnp.allclose(dpos1, dpos2)
     assert not jnp.allclose(vel1, vel2)
+
+
+def test_lpt_accepts_particlewise_scale_factors():
+    cosmo = planck18()
+    cosmo._workspace = {}
+    mesh_shape = np.array([4, 4, 4])
+    box_shape = np.array([100.0, 100.0, 100.0])
+
+    key = jr.PRNGKey(3)
+    init_mesh_real = jr.normal(key, shape=mesh_shape)
+    pmesh = lin_power_mesh(cosmo, mesh_shape, box_shape, a=1.0)
+    init_mesh = jnp.fft.rfftn(init_mesh_real) * jnp.sqrt(pmesh)
+
+    pos = jnp.indices(mesh_shape, dtype=float).reshape(3, -1).T
+    a_part = jnp.linspace(0.6, 0.9, pos.shape[0])[:, None]
+
+    dpos, vel = lpt(cosmo, init_mesh, pos, a=a_part, order=2)
+    assert dpos.shape == pos.shape
+    assert vel.shape == pos.shape
+    assert jnp.all(jnp.isfinite(dpos))
+    assert jnp.all(jnp.isfinite(vel))

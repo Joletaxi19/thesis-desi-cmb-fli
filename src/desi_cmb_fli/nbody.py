@@ -170,13 +170,23 @@ def lpt(cosmo: Cosmology, init_mesh, pos, a, order=2, grad_fd=False, lap_fd=Fals
     mesh_shape = ch2rshape(init_mesh.shape)
 
     force1 = pm_forces(pos, mesh_shape, mesh=delta_k, grad_fd=grad_fd, lap_fd=lap_fd)
-    dpos = a2g(cosmo, a) * force1
+    growth = a2g(cosmo, a)
+    if jnp.ndim(growth) == 1:
+        growth = growth[:, None]
+    dpos = growth * force1
     vel = force1
 
     if order == 2:
         force2 = pm_forces2(delta_k, pos, mesh_shape, grad_fd=grad_fd, lap_fd=lap_fd)
-        dpos -= a2gg(cosmo, a) * force2
-        vel -= a2dggdg(cosmo, a) * force2
+        growth2 = a2gg(cosmo, a)
+        if jnp.ndim(growth2) == 1:
+            growth2 = growth2[:, None]
+        dpos -= growth2 * force2
+
+        dggdg = a2dggdg(cosmo, a)
+        if jnp.ndim(dggdg) == 1:
+            dggdg = dggdg[:, None]
+        vel -= dggdg * force2
 
     return dpos, vel
 
@@ -201,7 +211,10 @@ def a2gg(cosmo, a):
         _growth_factor_ODE(cosmo, np.atleast_1d(1.0), log10_amin=log10_amin, steps=steps)
     cache = cosmo._workspace["background.growth_factor"]
     # NOTE: g2 is normalized such that gg = -3/7 * g2 ~ -3/7 * g^2
-    return jnp.interp(a, cache["a"], cache["g2"]) * -3 / 7
+    if "g2" in cache:
+        return jnp.interp(a, cache["a"], cache["g2"]) * -3 / 7
+    # Fallback for jaxpm versions exposing only first-order growth.
+    return -3 / 7 * a2g(cosmo, a) ** 2
 
 
 def a2f(cosmo, a):
@@ -215,7 +228,10 @@ def a2ff(cosmo, a):
     if "background.growth_factor" not in cosmo._workspace.keys():
         _growth_factor_ODE(cosmo, np.atleast_1d(1.0), log10_amin=log10_amin, steps=steps)
     cache = cosmo._workspace["background.growth_factor"]
-    return jnp.interp(a, cache["a"], cache["f2"])
+    if "f2" in cache:
+        return jnp.interp(a, cache["a"], cache["f2"])
+    # If D2 ~ D1^2 then f2 ~ 2 f1.
+    return 2 * a2f(cosmo, a)
 
 
 def a2dggdg(cosmo, a):
@@ -236,7 +252,9 @@ def g2gg(cosmo, g):
         _growth_factor_ODE(cosmo, np.atleast_1d(1.0), log10_amin=log10_amin, steps=steps)
     cache = cosmo._workspace["background.growth_factor"]
     # NOTE: g2 is normalized such that gg = -3/7 * g2 ~ -3/7 * g^2
-    return jnp.interp(g, cache["g"], cache["g2"]) * -3 / 7
+    if "g2" in cache:
+        return jnp.interp(g, cache["g"], cache["g2"]) * -3 / 7
+    return -3 / 7 * g**2
 
 
 def g2f(cosmo, g):
@@ -250,12 +268,35 @@ def g2ff(cosmo, g):
     if "background.growth_factor" not in cosmo._workspace.keys():
         _growth_factor_ODE(cosmo, np.atleast_1d(1.0), log10_amin=log10_amin, steps=steps)
     cache = cosmo._workspace["background.growth_factor"]
-    return jnp.interp(g, cache["g"], cache["f2"])
+    if "f2" in cache:
+        return jnp.interp(g, cache["g"], cache["f2"])
+    return 2 * g2f(cosmo, g)
 
 
 def g2dggdg(cosmo, g):
     gg, f, ff = g2gg(cosmo, g), g2f(cosmo, g), g2ff(cosmo, g)
     return safe_div(gg * ff, g * f)  # NOTE: dggdg(0) = 0
+
+
+#############
+# Distances #
+#############
+def a2chi(cosmo, a):
+    """
+    Radial comoving distance in Mpc/h for a given scale factor.
+    """
+    a = jnp.asarray(a)
+    chi = jc.background.radial_comoving_distance(cosmo, a.reshape(-1))
+    return chi.reshape(a.shape)
+
+
+def chi2a(cosmo, chi):
+    """
+    Scale factor for a given radial comoving distance in Mpc/h.
+    """
+    chi = jnp.asarray(chi)
+    a = jc.background.a_of_chi(cosmo, chi.reshape(-1))
+    return a.reshape(chi.shape)
 
 
 ###########

@@ -99,13 +99,65 @@ def test_kaiser_model_with_rsd():
     assert result_with_rsd.shape == tuple(mesh_shape)
 
 
+def test_kaiser_model_constant_los_field_matches_vector():
+    """Constant LOS field should match the fixed-LOS Kaiser branch."""
+    cosmo = planck18()
+    mesh_shape = np.array([8, 8, 8])
+    bE = 1.5
+    a_mesh = jnp.ones(tuple(mesh_shape)) * 0.8
+
+    los_vec = np.array([0.0, 0.0, 1.0])
+    los_field = jnp.broadcast_to(jnp.asarray(los_vec), tuple(mesh_shape) + (3,))
+
+    key = jr.PRNGKey(123)
+    init_mesh_real = jr.normal(key, shape=tuple(mesh_shape))
+    init_mesh = jnp.fft.rfftn(init_mesh_real)
+
+    result_vec = kaiser_model(cosmo, a_mesh, bE, init_mesh, los=los_vec)
+
+    cosmo2 = planck18()
+    result_field = kaiser_model(cosmo2, a_mesh, bE, init_mesh, los=los_field)
+
+    assert result_field.shape == tuple(mesh_shape)
+    assert jnp.allclose(result_vec, result_field, rtol=1e-5, atol=1e-5)
+
+
+def test_kaiser_model_curved_sky_los_field_runs():
+    """Kaiser model should accept spatially varying LOS and local scale factors."""
+    cosmo = planck18()
+    mesh_shape = np.array([6, 6, 6])
+    bE = 1.3
+
+    a_line = jnp.linspace(0.65, 0.9, mesh_shape[2])
+    a_mesh = jnp.broadcast_to(a_line[None, None, :], tuple(mesh_shape))
+
+    gx, gy, gz = jnp.meshgrid(
+        jnp.arange(mesh_shape[0]) - mesh_shape[0] / 2,
+        jnp.arange(mesh_shape[1]) - mesh_shape[1] / 2,
+        jnp.arange(mesh_shape[2]),
+        indexing="ij",
+    )
+    pos = jnp.stack([gx, gy, gz], axis=-1)
+    los_field = pos / jnp.maximum(jnp.linalg.norm(pos, axis=-1, keepdims=True), 1e-8)
+
+    key = jr.PRNGKey(456)
+    init_mesh_real = jr.normal(key, shape=tuple(mesh_shape))
+    init_mesh = jnp.fft.rfftn(init_mesh_real)
+
+    result = kaiser_model(cosmo, a_mesh, bE, init_mesh, los=los_field)
+    assert result.shape == tuple(mesh_shape)
+    assert jnp.all(jnp.isfinite(result))
+
+
 def test_rsd_no_los():
     """Test RSD with los=None returns zeros."""
     cosmo = planck18()
     a = 0.8
     vel = jnp.ones((100, 3))
+    mesh_shape = np.array([8, 8, 8])
+    box_shape = np.array([100.0, 100.0, 100.0])
 
-    dpos = rsd(cosmo, a, vel, los=None)
+    dpos = rsd(cosmo, vel, los=None, a=a, box_shape=box_shape, mesh_shape=mesh_shape)
 
     assert jnp.allclose(dpos, 0.0)
 
@@ -116,8 +168,10 @@ def test_rsd_with_los():
     a = 0.8
     vel = jnp.ones((100, 3)) * 0.1  # Small velocities
     los = np.array([0.0, 0.0, 1.0])
+    mesh_shape = np.array([8, 8, 8])
+    box_shape = np.array([100.0, 100.0, 100.0])
 
-    dpos = rsd(cosmo, a, vel, los)
+    dpos = rsd(cosmo, vel, los, a, box_shape, mesh_shape)
 
     # Displacement should be along los direction
     assert dpos.shape == vel.shape

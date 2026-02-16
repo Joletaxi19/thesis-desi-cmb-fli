@@ -27,6 +27,9 @@ def test_model_creation():
     assert model.box_shape.shape == (3,)
     assert model.evolution in ["kaiser", "lpt", "nbody"]
     assert model.observable == "field"
+    assert model.lightcone is True
+    assert model.a_obs is None
+    assert 0.0 < model.a_fid <= 1.0
 
 
 def test_model_str(small_model):
@@ -142,6 +145,21 @@ def test_evolution_options():
             frombase=True,
         )
         assert "obs" in truth
+
+
+def test_nbody_lightcone_not_implemented():
+    config = default_config.copy()
+    config["mesh_shape"] = (8, 8, 8)
+    config["box_shape"] = (80.0, 80.0, 80.0)
+    config["evolution"] = "nbody"
+    config["a_obs"] = None
+
+    model = FieldLevelModel(**config)
+    with pytest.raises(NotImplementedError):
+        model.predict(
+            samples={"Omega_m": 0.3, "sigma8": 0.8, "b1": 1.0, "b2": 0.0, "bs2": 0.0, "bn2": 0.0},
+            frombase=True,
+        )
 
 
 def test_precond_options(small_model):

@@ -13,6 +13,15 @@ import jax_cosmo.constants as constants
 from jax.scipy.ndimage import map_coordinates
 
 
+def lensing_kernel(cosmo, chi, a, chi_source):
+    """
+    Born/Limber lensing kernel W_kappa(chi) for a source plane at chi_source.
+    """
+    prefactor = 1.5 * cosmo.Omega_m * (constants.H0 / constants.c) ** 2
+    geometry = jnp.clip((chi_source - chi) / chi_source, 0.0, jnp.inf)
+    return prefactor * (chi / a) * geometry
+
+
 def convergence_Born(cosmo,
                      density_field,
                      r_planes,
@@ -50,9 +59,6 @@ def convergence_Born(cosmo,
     convergence : array [Nz_source, Npix_x, Npix_y]
         Convergence maps for each source redshift.
     """
-    # Compute constant prefactor: 3/2 * Omega_m * (H0/c)^2
-    constant_factor = 3 / 2 * cosmo.Omega_m * (constants.H0 / constants.c)**2
-
     # Compute comoving distance of source(s)
     r_s = jc.background.radial_comoving_distance(cosmo, 1 / (1 + z_source))
 
@@ -61,10 +67,9 @@ def convergence_Born(cosmo,
     def scan_fn(carry, i):
         density_field, a_planes, r_planes = carry
 
-        # Extract the i-th plane and normalize
+        # Extract the i-th plane.
         plane = density_field[:, :, i]
-        density_normalization = dz * r_planes[i] / a_planes[i]
-        plane = (plane - 1.0) * constant_factor * density_normalization
+        plane = plane - 1.0
 
         nx = density_field.shape[0]
         # Gnomonic projection: x_phys = r * tan(theta)
@@ -73,10 +78,10 @@ def convergence_Born(cosmo,
         pixel_coords = jnp.tan(coords) * r_planes[i] / dx + nx / 2.0
         im = map_coordinates(plane, pixel_coords, order=1, mode="wrap")
 
-        # Weight by lensing kernel: (1 - r/r_s)
-        kernel = jnp.clip(1. - (r_planes[i] / r_s), 0, 1000).reshape([-1, 1, 1])
+        # Weight by lensing kernel at the slice scale factor.
+        kernel = lensing_kernel(cosmo, r_planes[i], a_planes[i], r_s).reshape([-1, 1, 1])
 
-        return carry, im * kernel
+        return carry, im * dz * kernel
 
     _, convergence_planes = jax.lax.scan(
         scan_fn,
@@ -275,7 +280,6 @@ def compute_theoretical_cl_kappa(cosmo, ell, chi_min, chi_max, z_source, n_steps
     import jax
     import jax.numpy as jnp
     import jax_cosmo as jc
-    import jax_cosmo.constants as constants
 
     # Source distance
     chi_s = jc.background.radial_comoving_distance(cosmo, 1.0 / (1.0 + z_source))[0]
@@ -289,10 +293,7 @@ def compute_theoretical_cl_kappa(cosmo, ell, chi_min, chi_max, z_source, n_steps
     # Scale factor and redshift at integration points
     a = jc.background.a_of_chi(cosmo, chi)
 
-    # Lensing kernel W(chi) = (3/2 Omega_m (H0/c)^2) * (chi/a) * (chi_s - chi)/chi_s
-    constant_factor = 1.5 * cosmo.Omega_m * (constants.H0 / constants.c)**2
-    w_val = constant_factor * (chi / a) * (chi_s - chi) / chi_s
-    w_val = jnp.where(chi < chi_s, w_val, 0.0)
+    w_val = lensing_kernel(cosmo, chi, a, chi_s)
 
     def get_cl_per_ell(ell):
         # Limber approximation: k = (ell + 0.5) / chi
@@ -325,7 +326,7 @@ def compute_theoretical_cl_kappa(cosmo, ell, chi_min, chi_max, z_source, n_steps
     return jnp.interp(ell, ell_interp, cl_interp)
 
 
-def compute_theoretical_cl_gg(cosmo, ell, chi_min, chi_max, b1, n_steps=100):
+def compute_theoretical_cl_gg(cosmo, ell, chi_min, chi_max, b1, n_steps=100, bias_of_a=None):
     """
     Compute theoretical C_l^{gg} for galaxies using Limber approximation.
 
@@ -353,9 +354,12 @@ def compute_theoretical_cl_gg(cosmo, ell, chi_min, chi_max, b1, n_steps=100):
     chi = jnp.linspace(chi_min, chi_max, n_steps)
     a = jc.background.a_of_chi(cosmo, chi)
 
-    # Galaxy kernel: uniform distribution, normalized
     delta_chi = chi_max - chi_min
-    w_g = b1 / delta_chi
+    if bias_of_a is None:
+        bias = jnp.ones_like(a) * b1
+    else:
+        bias = bias_of_a(a)
+    w_g = bias / delta_chi
 
     def get_cl_per_ell(ell_val):
         k = (ell_val + 0.5) / chi
@@ -367,7 +371,7 @@ def compute_theoretical_cl_gg(cosmo, ell, chi_min, chi_max, b1, n_steps=100):
     return jax.vmap(get_cl_per_ell)(ell)
 
 
-def compute_theoretical_cl_kg(cosmo, ell, chi_min, chi_max, z_source, b1, n_steps=100):
+def compute_theoretical_cl_kg(cosmo, ell, chi_min, chi_max, z_source, b1, n_steps=100, bias_of_a=None):
     """
     Compute theoretical C_l^{kappa g} cross-spectrum using Limber approximation.
 
@@ -397,14 +401,14 @@ def compute_theoretical_cl_kg(cosmo, ell, chi_min, chi_max, z_source, b1, n_step
     chi = jnp.linspace(chi_min, chi_max, n_steps)
     a = jc.background.a_of_chi(cosmo, chi)
 
-    # Lensing kernel
-    constant_factor = 1.5 * cosmo.Omega_m * (constants.H0 / constants.c)**2
-    w_kappa = constant_factor * (chi / a) * (chi_s - chi) / chi_s
-    w_kappa = jnp.where(chi < chi_s, w_kappa, 0.0)
+    w_kappa = lensing_kernel(cosmo, chi, a, chi_s)
 
-    # Galaxy kernel
     delta_chi = chi_max - chi_min
-    w_g = b1 / delta_chi
+    if bias_of_a is None:
+        bias = jnp.ones_like(a) * b1
+    else:
+        bias = bias_of_a(a)
+    w_g = bias / delta_chi
 
     def get_cl_per_ell(ell_val):
         k = (ell_val + 0.5) / chi

@@ -5,7 +5,6 @@ from pathlib import Path
 import jax
 import jax.numpy as jnp
 import jax.random as jr
-import jax_cosmo as jc
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -168,9 +167,7 @@ def compute_and_plot_spectra(model, truth_params, output_dir=None, n_realization
 
     # Get cosmology for projection
     cosmo_val = get_cosmology(**truth_params)
-    chi_center_val = float(jc.background.radial_comoving_distance(
-        cosmo_val, jnp.atleast_1d(model.a_obs)
-    )[0])
+    chi_center_val = float(model.box_center[2]) if hasattr(model, "box_center") else float(model.box_shape[2] / 2.0)
 
     # Determine field size for projection
     if cmb_enabled:

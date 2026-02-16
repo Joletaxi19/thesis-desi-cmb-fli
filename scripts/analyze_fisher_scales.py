@@ -129,12 +129,14 @@ def simple_fisher(config_path="configs/inference/config.yaml"):
     k_mode_mask = k_modes > 0.0
     k_modes = k_modes[k_mode_mask]
 
+    a_eff = model.a_fid if hasattr(model, "a_fid") else model.a_obs
+
     def get_Pgg_all_k(theta):
         """Vectorized P_gg(k) = b_E² * P_mm(k) from jax_cosmo."""
         Om, s8 = theta
         cosmo = get_cosmology(Omega_m=Om, sigma8=s8)
         # Vectorized over all k_modes at once
-        Pmm = jnp.squeeze(jax_cosmo.power.linear_matter_power(cosmo, k_modes, a=model.a_obs))
+        Pmm = jnp.squeeze(jax_cosmo.power.linear_matter_power(cosmo, k_modes, a=a_eff))
         return (bE**2) * Pmm
 
     # Compute P_gg(k) and its derivative via JAX autodiff
@@ -155,7 +157,7 @@ def simple_fisher(config_path="configs/inference/config.yaml"):
 
     predicted_sigma_gxy = 1.0 / jnp.sqrt(total_fisher_gxy)
 
-    z_obs = 1.0/model.a_obs - 1.0
+    z_obs = 1.0 / a_eff - 1.0
 
     print("-" * 50)
     print(f"GALAXY RESULTS (Box shape: {tuple(model.box_shape)} Mpc/h)")
