@@ -284,8 +284,14 @@ cmb_lensing:
 
 ## Next Steps
 
-1. **Preconditioning for Joint Inference** - Incorporate CMB lensing terms into the MCLMC/MAMS preconditioning matrices for improved sampling efficiency.
-2. **Implement Lightcone for Galaxy Field** - Account for structure evolution and geometric projection within the simulation box (moving beyond the current snapshot/effective-redshift approximation).
-3. **Field-Level Inference on Real Data** - Application to joint DESI LRG $\times$ Planck/ACT $\kappa$-map datasets.
+1. **Implement proper Fisher forecast comparison** between galaxies and CMB lensing to quantify the relative information content of each probe (talk to Arnaud De Mattia).
+2. **Compare the analysis to a standard power spectrum analysis** to validate the field-level inference results (talk to Arnaud De Mattia).
+3. **Implement anti-aliasing features** (oversampling, deconvolution, order two interlacing and kernel choise) to enable higher-resolution modeling and access to smaller scales (talk to Hugo Simon).
+4. **Implement curved-sky for CMB lensing** to enable accurate modeling of large angular scales (talk to Wassim Kabalan).
+5. **Infer $b_1 \times σ_8$** instead of $b_1$ to break degeneracies and improve constraints (talk to Hugo Simon).
+6. **Measure the runtime of a single model evaluation** to assess the additional computational cost of the CMB lensing modeling and likelihood compared to the galaxy-only pipeline.
+7. **Implement the taylor expansion for the high-z correction at the order two (quadratic)** to improve accuracy when sampling far from the fiducial cosmology.
+8. **Preconditioning for Joint Inference** - Incorporate CMB lensing terms into the MCLMC/MAMS preconditioning matrices for improved sampling efficiency.
+9. **Field-Level Inference on Real Data** - Application to joint DESI LRG $\times$ Planck/ACT $\kappa$-map datasets.
 
 Implementation details will be documented as development progresses.
