@@ -3,7 +3,7 @@
 
 # SLURM configuration for NERSC Perlmutter
 slurm:
-  job_name: jointanalysis_bruitgxyaugmente100x
+  job_name: jointanalysis
   account: desi
   qos: regular
   constraint: gpu
@@ -21,7 +21,7 @@ model:
   curved_sky: true
   evolution: lpt # lpt or nbody
   lpt_order: 2
-  gxy_density: 0.000005 # LRG DESI gxy density : 0.0005
+  gxy_density: 0.0005 # LRG DESI gxy density : 0.0005
   # los: null  # Disable RSD (comment out to enable RSD)
 
 # CMB lensing configuration
