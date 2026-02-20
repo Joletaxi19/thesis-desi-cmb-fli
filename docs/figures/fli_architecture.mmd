@@ -4,10 +4,10 @@ flowchart TB
   %% =======================
   subgraph M["Model (Forward)"]
     direction TB
-    A["δ_ini"] --> B["JAX-PM"]
+    A["δ_ini"] --> B["Evolution (LPT)"]
     B --> C["δ_final"]
-    C --> D["δ_g = F(δ_final)"]
-    C -- ray-tracing --> E["κ-map (model)"]
+    C -- RSD + bias --> D["δ_g"]
+    C -- Born approximation --> E["κ-map"]
   end
 
   %% =========
@@ -22,16 +22,16 @@ flowchart TB
   %% =======================
   %% LIKELIHOOD / INFERENCE
   %% =======================
-  H["MCLMC — Likelihood"]:::like
+  H["Likelihood"]:::like
 
   %% Connections to likelihood
-  D -- model --> H
-  E -- model --> H
-  F -- data --> H
-  G -- data --> H
+  D --> H
+  E --> H
+  F --> H
+  G --> H
 
   %% Posterior feedback to initial field
-  H -. "posterior update (MCLMC)" .-> A
+  H -. "Posterior update (MCLMC)" .-> A
 
   %% Styles
   classDef data fill:#E7F2FF,stroke:#1E6BFF,stroke-width:1px,color:#0B3D91;

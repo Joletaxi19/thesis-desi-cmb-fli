@@ -11,7 +11,6 @@ dependencies:
   - pandas>=2.1
   - fitsio
   - pyyaml
-  - ipykernel
   - matplotlib
   - pytest
   - pytest-cov

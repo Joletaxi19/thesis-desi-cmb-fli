@@ -5,7 +5,7 @@ The scientific objective is to extract cosmological information using field-leve
 
 ## Overview
 
-![Field-Level Inference Architecture](figures/fli_architecture.jpeg)
+![Field-Level Inference Architecture](figures/fli_architecture.png)
 
 *Figure: Complete field-level inference pipeline. The forward model (top) generates predictions from initial conditions δ_ini through N-body evolution (JAX-PM) to final density δ_final, which produces both galaxy overdensity δ_g and κ-map through ray-tracing. The MCLMC sampler compares these predictions with observed data (DESI LRG + Planck/ACT κ-map) to update the posterior distribution of cosmological parameters and the initial density field.*
 
