@@ -160,7 +160,7 @@ def compute_and_plot_spectra(model, truth_params, output_dir=None, n_realization
     print(f"CMB Lensing Enabled: {cmb_enabled}")
 
     if cmb_enabled:
-        print(f"  Field size: {model.cmb_field_size_deg:.2f}°")
+        print(f"  Sky area: {model.cmb_field_size_deg**2:.2f} deg²")
         print(f"  CMB npix: {model.cmb_field_npix}")
 
     base_seed = seed if seed is not None else 42 # Default seed if None
@@ -179,7 +179,7 @@ def compute_and_plot_spectra(model, truth_params, output_dir=None, n_realization
         half_angle_rad = np.arctan(model.box_shape[0] / (2.0 * chi_max_box))
         field_size = float(2.0 * half_angle_rad * (180.0 / np.pi))
         npix = 256 # Default npix for visualization
-        print(f"  Computed field size (for galaxy projection): {field_size:.2f}°")
+        print(f"  Computed sky area (for galaxy projection): {field_size**2:.2f} deg²")
 
     # Storage
     all_cl_kk_box = []

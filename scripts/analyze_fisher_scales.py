@@ -96,7 +96,7 @@ def simple_fisher(config_path="configs/inference/config.yaml"):
     predicted_sigma_cmb = 1.0 / jnp.sqrt(total_fisher_cmb)
 
     print("-" * 50)
-    print(f"CMB LENSING RESULTS (Patch: {model.cmb_field_size_deg:.2f} deg)")
+    print(f"CMB LENSING RESULTS (Sky area: {model.cmb_field_size_deg**2:.2f} deg²)")
     print("-" * 50)
     print(f"Total Fisher Info (Omega_m): {total_fisher_cmb:.2f}")
     print(f"Predicted 1-sigma error on Omega_m: {predicted_sigma_cmb:.5f}")
@@ -212,7 +212,7 @@ def simple_fisher(config_path="configs/inference/config.yaml"):
 
     plt.xlabel(r"Multipole $\ell$", fontsize=14)
     plt.ylabel(r"$\Delta F(\ell) = \frac{1}{2} \, (\frac{\partial C_\ell}{\partial \Omega_m})^2 \, (C_\ell^{\kappa\kappa} + N_\ell)^{-2}$", fontsize=12)
-    plt.title(rf"CMB Lensing Information (Patch: {model.cmb_field_size_deg:.1f}$^\circ$)", fontsize=16)
+    plt.title(rf"CMB Lensing Information (Sky area: {model.cmb_field_size_deg**2:.1f} deg$^2$)", fontsize=16)
     plt.legend(fontsize=12, loc='upper right')
     plt.grid(alpha=0.2)
     plt.xlim(l_min, l_max)
