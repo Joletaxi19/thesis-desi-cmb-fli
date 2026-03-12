@@ -371,7 +371,7 @@ The MCLMC sampler's performance is critically dependent on the **energy variance
 4. **Compare the analysis to a standard power spectrum analysis** to validate the field-level inference results (talk to Arnaud De Mattia).
 5. **Implement curved-sky for CMB lensing** to enable accurate modeling of large angular scales (talk to Wassim Kabalan) and directly take an HEALPix κ-map as input.
 6. **Infer $b_1 \times σ_8$** instead of $b_1$ to break degeneracies and improve constraints (talk to Hugo Simon).
-7. **Measure the runtime of a single model evaluation** to assess the additional computational cost of the CMB lensing modeling and likelihood compared to the galaxy-only pipeline. Note: the Born projection was initially implemented as a **particle-based per-shell CIC scatter** (`convergence_Born_particles`), which was ~200× slower than the current mesh-based approach (192 shells × 786k particles per grad step → ~0.5s/step → 1h warmup). This was replaced by the mesh-based `convergence_Born_mesh` that operates on 64×64 z-slices with `map_coordinates`, bringing the overhead to negligible levels.
+7. **Measure the runtime of a single model evaluation** to assess the additional computational cost of the CMB lensing modeling and likelihood compared to the galaxy-only pipeline.
 8. **Implement the taylor expansion for the high-z correction at the order two (quadratic)** to improve accuracy when sampling far from the fiducial cosmology.
 9. **Preconditioning for Joint Inference** - Incorporate CMB lensing terms into the MCLMC/MAMS preconditioning matrices for improved sampling efficiency.
 10. **Field-Level Inference on Real Data** - Application to joint DESI LRG $\times$ Planck/ACT $\kappa$-map datasets.
