@@ -3,7 +3,7 @@
 
 # SLURM configuration for NERSC Perlmutter
 slurm:
-  job_name: jointanalysis
+  job_name: cmb_only_abacus
   account: desi
   qos: regular
   constraint: gpu
@@ -13,14 +13,15 @@ slurm:
 
 # Model configuration
 model:
-  cell_size: 15.625    # Mpc/h
-  box_shape: [1000.0, 1000.0, 2000.0]  # Mpc/h [Lx, Ly, Lz]
-  galaxies_enabled: true  # Set to false for CMB-only runs
+  cell_size: 15.625  # Mpc/h
+  box_shape: [1000.0, 1000.0, 3000.0]  # Mpc/h [Lx, Ly, Lz]
+  galaxies_enabled: false  # Set to false for CMB-only runs
   lightcone: true
   a_obs: null
-  curved_sky: true
+  curved_sky: true # only for galaxies, the CMB lensing part is always in the flat sky approximation
   evolution: lpt # lpt or nbody
   lpt_order: 2
+  paint_oversamp: 1.5  # CIC oversampling: paint on 1.5x mesh, deconvolve, Fourier crop
   gxy_density: 0.0005 # LRG DESI gxy density : 0.0005
   # los: null  # Disable RSD (comment out to enable RSD)
 
@@ -32,8 +33,9 @@ cmb_lensing:
   cmb_noise_scaling: 1.0  # Artificial scaling factor (0.01 = divide N_l by 100)
   full_los_correction: true
   high_z_mode: taylor # Options: exact, fixed, taylor
+  chi_high_z_max: 3990  # chi_max for the full LOS high-z correction in Mpc/h. Comment for cmb source plane comoving distance. For AbacusSummit runs with base z_max=2.45, set this to 3990 Mpc/h.
 
-# Truth parameters
+# Truth parameters (closure test only — ignored in abacus/real-data modes)
 truth_params:
   Omega_m: 0.3
   sigma8: 0.8
@@ -100,9 +102,23 @@ mcmc:
   save_large_fields: false
 
   mclmc:
-    desired_energy_var: 0.0000005 # Value which work well for realistic runs : 0.0000005
+    desired_energy_var: 0.0000005 # Value which work well for runs with realistic noise : 0.0000005
     diagonal_preconditioning: true
     thinning: 20
+
+# Observation mode: "closure" or "abacus"
+observation_mode: abacus
+
+# AbacusSummit c000 true cosmology (used as corner-plot markers in abacus mode)
+abacus_truth_params:
+  Omega_m: 0.315192
+  sigma8: 0.811355
+
+abacus_kappa:
+  file: "/global/cfs/cdirs/desi/cosmosim/AbacusLensing/v1/AbacusSummit_base_c000_ph000/kappa_00047.asdf"
+  lon: 75.0   # deg
+  lat: 20.0   # deg
+  noise_seed: 6482  # seed for the random noise realization added to the kappa map
 
 # Random seed
 seed: 412

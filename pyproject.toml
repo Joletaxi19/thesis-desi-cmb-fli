@@ -60,6 +60,11 @@ dev = [
   "matplotlib",
   "pandas>=2.1",
 ]
+abacus = [
+  "healpy>=1.16",
+  "asdf>=3.0",
+  "abacusutils>=1.0",
+]
 
 [tool.setuptools]
 package-dir = {"" = "src"}

@@ -104,6 +104,46 @@ def regular_pos(mesh_shape: tuple, ptcl_shape: tuple | None = None):
     return jnp.stack(np.meshgrid(*pos, indexing="ij"), axis=-1).reshape(-1, 3)
 
 
+def cic_paint_2d(mesh, positions, weight):
+    """
+    CIC (Cloud-In-Cell) painting onto a 2D grid.
+
+    Parameters
+    ----------
+    mesh : array [Nx, Ny]
+        2D grid to paint onto (typically zero-initialized).
+    positions : array [N, 2]
+        Particle positions in pixel units.
+    weight : array [N]
+        Per-particle weights.
+
+    Returns
+    -------
+    mesh : array [Nx, Ny]
+        Painted 2D grid.
+    """
+    nx, ny = mesh.shape
+    pos_floor = jnp.floor(positions).astype(int)
+    frac = positions - pos_floor
+
+    # 4 CIC neighbors: (0,0), (1,0), (0,1), (1,1)
+    dx = jnp.stack([1.0 - frac[:, 0], frac[:, 0]], axis=-1)  # (N, 2)
+    dy = jnp.stack([1.0 - frac[:, 1], frac[:, 1]], axis=-1)  # (N, 2)
+
+    # Non-periodic BC: particles outside the grid are discarded (not wrapped).
+    for di in range(2):
+        for dj in range(2):
+            ix = pos_floor[:, 0] + di
+            iy = pos_floor[:, 1] + dj
+            valid = (ix >= 0) & (ix < nx) & (iy >= 0) & (iy < ny)
+            w = jnp.where(valid, weight * dx[:, di] * dy[:, dj], 0.0)
+            ix = jnp.clip(ix, 0, nx - 1)
+            iy = jnp.clip(iy, 0, ny - 1)
+            mesh = mesh.at[ix, iy].add(w)
+
+    return mesh
+
+
 def cell2phys_pos(pos, box_center, box_shape, mesh_shape):
     """
     Convert cell coordinates to physical coordinates in Mpc/h.

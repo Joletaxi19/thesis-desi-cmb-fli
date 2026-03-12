@@ -21,8 +21,11 @@ dependencies:
   - mkdocs-material
   - pymdown-extensions
   - pip
+  - healpy
   - pip:
     - numpyro>=0.13
     - jaxpm==0.0.2
     - "jax-cosmo @ git+https://github.com/DifferentiableUniverseInitiative/jax_cosmo@master"
     - corner>=2.1.0
+    - asdf>=3.0
+    - abacusutils>=1.0

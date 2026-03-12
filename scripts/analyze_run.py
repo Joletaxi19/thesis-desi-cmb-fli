@@ -9,6 +9,9 @@ Usage:
 """
 
 import argparse
+import os
+
+os.environ.setdefault("JAX_PLATFORMS", "cpu")
 from pathlib import Path
 
 import jax
@@ -18,9 +21,11 @@ import numpy as np
 
 from desi_cmb_fli import utils
 from desi_cmb_fli.chains import Chains
+from desi_cmb_fli.utils import ObservationMode
 
 # Enable x64 (needed for some operations)
 jax.config.update("jax_enable_x64", True)
+
 
 def _merge_batches(run_dir):
     """
@@ -183,8 +188,12 @@ def load_and_process_run(run_dir, burn_in=0.0, exclude_chains=None):
     truth_vals = {}
     if config_yaml_path.exists():
         full_cfg = utils.yload(config_yaml_path)
-        if "truth_params" in full_cfg:
-            truth_vals = full_cfg["truth_params"]
+        obs_mode = ObservationMode.validate(full_cfg.get("observation_mode", "closure"))
+        if obs_mode == ObservationMode.ABACUS:
+            # In abacus mode, use the AbacusSummit cosmology as truth markers
+            truth_vals = full_cfg.get("abacus_truth_params", {})
+        else:
+            truth_vals = full_cfg.get("truth_params", {})
 
     # Identify available scalar parameters (avoid showing fixed bias params in CMB-only)
     priority_params = ["Omega_m", "sigma8", "b1", "b2", "bs2", "bn2"]

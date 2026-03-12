@@ -1,6 +1,7 @@
 from __future__ import annotations  # for Union typing | in python<3.10
 
 import pickle
+from enum import Enum
 from functools import partial, wraps
 from pathlib import Path
 
@@ -11,6 +12,31 @@ from jax import grad, jit, lax, vmap
 from jax.scipy.special import logsumexp
 from jax.scipy.stats import norm
 from numpyro.distributions import Distribution, TruncatedNormal, Uniform, constraints
+
+
+class ObservationMode(str, Enum):
+    """
+    Enum for the observation mode controlling how kappa_obs is built.
+
+    CLOSURE : synthetic observation generated from truth_params via model.predict.
+              Used for closure tests and prior predictive checks.
+    ABACUS  : external N-body kappa map loaded from AbacusSummit + synthetic
+              N_ell reconstruction noise realization added on top.
+              truth_params are NOT used in the likelihood; abacus_truth_params
+              can be provided for corner-plot markers only.
+    """
+    CLOSURE = "closure"
+    ABACUS  = "abacus"
+
+    @classmethod
+    def validate(cls, value: str) -> ObservationMode:
+        try:
+            return cls(value.lower())
+        except ValueError:
+            valid = [m.value for m in cls]
+            raise ValueError(
+                f"Unknown observation_mode: {value!r}. Expected one of {valid}."
+            ) from None
 
 
 def vlim(a, level=1.0, scale=1.0, axis=0):
@@ -483,11 +509,97 @@ def ch2rshape(kshape):
 
     Assume last real shape is even to lift the ambiguity.
     """
-    return (*kshape[:2], 2 * (kshape[2] - 1))
+    return (*kshape[:-1], 2 * (kshape[-1] - 1))
 
 
 def r2chshape(shape):
     """
     Real shape to complex Hermitian shape.
     """
-    return (*shape[:2], shape[2] // 2 + 1)
+    return (*shape[:-1], shape[-1] // 2 + 1)
+
+
+def get_scaled_shape(mesh_shape, scale=1.0):
+    """Return mesh_shape scaled by factor, rounded to even integers."""
+    return tuple(2 * np.rint(np.asarray(mesh_shape) * scale / 2).astype(int))
+
+
+def hermitian_symmetric(arr):
+    """Return the Hermitian symmetric of a tensor (of any dimension and shape)."""
+    dim = len(arr.shape)
+    ids = dim * (slice(None, None, -1),)
+    arr = arr[ids].conj()
+    for ax in range(dim):
+        arr = jnp.roll(arr, shift=1, axis=ax)
+    return arr
+
+
+def _chreshape(mesh, shape):
+    """
+    Naively reshape a complex Hermitian tensor.
+    Does not preserve Hermitian symmetry nor power on its own.
+    """
+    scale = np.divide(ch2rshape(shape), ch2rshape(mesh.shape)).prod()
+
+    # Center wavevectors in mesh to truncate or pad
+    for ax, s in enumerate(mesh.shape[:-1]):
+        mesh = jnp.roll(mesh, s // 2, ax)
+
+    slices = ()
+    for ax, (ms, s) in enumerate(zip(mesh.shape, shape, strict=False)):
+        trunc = max(ms - s, 0)
+        if ax < len(shape) - 1:
+            trunc //= 2
+            slices += (slice(trunc, None if trunc == 0 else -trunc),)
+        else:
+            slices += (slice(0, None if trunc == 0 else -trunc),)
+    mesh = mesh[slices]
+
+    pad_width = ()
+    for ax, (ms, s) in enumerate(zip(mesh.shape, shape, strict=False)):
+        pad = max(s - ms, 0)
+        if ax < len(shape) - 1:
+            pad //= 2
+            pad_width += ((pad, pad),)
+        else:
+            pad_width += ((0, pad),)
+    mesh = jnp.pad(mesh, pad_width=pad_width)
+
+    # Decenter wavevectors in mesh after truncate or pad
+    for ax, s in enumerate(mesh.shape[:-1]):
+        mesh = jnp.roll(mesh, -s // 2, ax)
+    return mesh * scale
+
+
+def chreshape(mesh, shape):
+    """
+    Reshape a complex Hermitian tensor,
+    with truncating or padding that preserves the Hermitian symmetry and power.
+    """
+    mesh = jnp.asarray(mesh)
+    for ax, (ms, s) in reversed(list(enumerate(zip(mesh.shape, shape, strict=False)))):
+        if s < ms:  # truncate axis
+            if ax < len(shape) - 1:
+                neg_ids = (slice(None),) * ax + (-s // 2,)
+                pos_ids = (slice(None),) * ax + (s // 2,)
+                mesh = mesh.at[neg_ids].set((mesh[pos_ids] + mesh[neg_ids]) / 2**0.5)
+            else:
+                pos_ids = (slice(None),) * ax + (s - 1,)
+                nyq_plane = mesh[pos_ids]
+                nyq_plane_sym = hermitian_symmetric(nyq_plane)
+                mesh = mesh.at[pos_ids].set((nyq_plane + nyq_plane_sym) / 2**0.5)
+
+    out = _chreshape(mesh, shape)
+
+    for ax, (ms, s) in enumerate(zip(mesh.shape, shape, strict=False)):
+        if s > ms:  # pad axis
+            if ax < len(shape) - 1:
+                neg_ids = (slice(None),) * ax + (-ms // 2,)
+                pos_ids = (slice(None),) * ax + (ms // 2,)
+                out = out.at[neg_ids].divide(2**0.5)
+                out = out.at[pos_ids].set(out[neg_ids])
+            else:
+                pos_ids = (slice(None),) * ax + (ms - 1,)
+                out = out.at[pos_ids].divide(2**0.5)
+
+    return out

@@ -208,6 +208,63 @@ def get_cl_2d(map1, map2=None, field_size_deg=1.0, comp=(0, 0)):
     return unique_ell[valid_idx], cl_averaged[valid_idx]
 
 
+def bin_cl_log(ell, cl, n_bins_per_decade=15, ell_min=None, ell_max=None):
+    """
+    Logarithmically bin an angular power spectrum.
+
+    Parameters
+    ----------
+    ell : array
+        Angular wavenumbers (1-D, from get_cl_2d).
+    cl : array
+        Power spectrum values.
+    n_bins_per_decade : int
+        Number of bins per decade of ell (default 15).
+    ell_min, ell_max : float or None
+        Bin range.  Defaults to the data range.
+
+    Returns
+    -------
+    ell_binned : array
+        Geometric centre of each bin.
+    cl_binned : array
+        Mean Cl in each bin.
+    n_modes : array (int)
+        Number of modes averaged in each bin (for error bars).
+    """
+    ell = np.asarray(ell, dtype=float)
+    cl  = np.asarray(cl,  dtype=float)
+
+    mask = np.isfinite(ell) & np.isfinite(cl) & (ell > 0)
+    ell, cl = ell[mask], cl[mask]
+
+    if len(ell) == 0:
+        return np.array([]), np.array([]), np.array([], dtype=int)
+
+    if ell_min is None:
+        ell_min = ell.min()
+    if ell_max is None:
+        ell_max = ell.max()
+
+    log_min = np.log10(ell_min)
+    log_max = np.log10(ell_max)
+    n_bins = max(1, int(np.ceil((log_max - log_min) * n_bins_per_decade)))
+
+    edges = np.logspace(log_min, log_max, n_bins + 1)
+    bin_idx = np.digitize(ell, edges)
+
+    ell_binned, cl_binned, n_modes = [], [], []
+    for b in range(1, n_bins + 1):
+        in_bin = bin_idx == b
+        if not np.any(in_bin):
+            continue
+        ell_binned.append(np.sqrt(edges[b - 1] * edges[b]))  # geometric centre
+        cl_binned.append(np.mean(cl[in_bin]))
+        n_modes.append(int(np.sum(in_bin)))
+
+    return np.array(ell_binned), np.array(cl_binned), np.array(n_modes, dtype=int)
+
+
 def transfer(mesh0, mesh1, box_shape, kedges: int | float | list = None, comp=(False, False)):
     if isinstance(comp, int):
         comp = (comp, comp)

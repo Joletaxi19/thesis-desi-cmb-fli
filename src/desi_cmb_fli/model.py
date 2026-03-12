@@ -33,14 +33,17 @@ from desi_cmb_fli.bricks import (
     tophysical_pos,
 )
 from desi_cmb_fli.chains import Chains
-from desi_cmb_fli.metrics import deconv_paint, powtranscoh, spectrum
+from desi_cmb_fli.metrics import powtranscoh, spectrum
 from desi_cmb_fli.nbody import a2g, g2a, lpt, nbody_bf
 from desi_cmb_fli.utils import (
     DetruncTruncNorm,
     DetruncUnif,
     cgh2rg,
     ch2rshape,
+    chreshape,
+    get_scaled_shape,
     nvmap,
+    r2chshape,
     rg2cgh,
     ysafe_dump,
     ysafe_load,
@@ -53,6 +56,7 @@ default_config = {
     # Evolution
     "a_obs": None,  # None => lightcone, float => snapshot
     "evolution": "lpt",  # kaiser, lpt, nbody
+    "paint_oversamp": 1.0,  # CIC paint oversampling factor (1.0 = no oversampling, 1.5 = standard)
     "nbody_steps": 5,
     "nbody_snapshots": None,
     "lpt_order": 2,
@@ -185,6 +189,8 @@ def get_model_from_config(config_or_path):
     else:
         raise ValueError("model.a_obs must be provided when model.lightcone=false")
 
+    if "paint_oversamp" in model_cfg:
+        model_config["paint_oversamp"] = float(model_cfg["paint_oversamp"])
     if "curved_sky" in model_cfg:
         model_config["curved_sky"] = bool(model_cfg["curved_sky"])
     if "los" in model_cfg:
@@ -200,6 +206,7 @@ def get_model_from_config(config_or_path):
         model_config["cmb_field_size_deg"] = None  # Auto-calculate
         model_config["cmb_field_npix"] = int(cmb_cfg["field_npix"]) if "field_npix" in cmb_cfg else None
         model_config["full_los_correction"] = cmb_cfg.get("full_los_correction", False)
+        model_config["chi_high_z_max"] = cmb_cfg.get("chi_high_z_max", None)  # None = integrate to chi_CMB
         model_config["cmb_z_source"] = float(cmb_cfg.get("z_source", 1100.0))
         model_config["cmb_lensing_obs"] = None # Will be set via conditioning if needed
 
@@ -510,6 +517,7 @@ class FieldLevelModel(Model):
     nbody_steps: int = field(default=default_config["nbody_steps"])
     nbody_snapshots: int | list = field(default=default_config["nbody_snapshots"])
     lpt_order: int = field(default=default_config["lpt_order"])
+    paint_oversamp: float = field(default=default_config["paint_oversamp"])
     # Observable
     observable: str = field(default=default_config["observable"])
     gxy_density: float = field(default=default_config["gxy_density"])
@@ -527,6 +535,7 @@ class FieldLevelModel(Model):
     cmb_enabled: bool = field(default=False)  # Explicit flag to enable CMB lensing
 
     full_los_correction: bool = field(default=False)  # Enable high-z kappa correction
+    chi_high_z_max: float | None = field(default=None)  # Upper chi limit for high-z correction (None = chi_CMB)
     high_z_mode: str = field(default="taylor")  # 'fixed', 'taylor', 'exact'
     # Latents (required, from default_config)
     precond: str = field(default=default_config["precond"])
@@ -543,6 +552,13 @@ class FieldLevelModel(Model):
         # NOTE: if x32, cast mesh_shape into float32 to avoid int32 overflow when computing products
         self.box_shape = np.asarray(self.box_shape, dtype=float)
         self.cell_shape = self.box_shape / self.mesh_shape
+
+        # Oversampled paint shape for CIC deconvolution
+        if self.paint_oversamp != 1.0:
+            self.paint_shape = np.asarray(get_scaled_shape(tuple(self.mesh_shape), self.paint_oversamp))
+            print(f"  Paint oversampling: {self.paint_oversamp} => paint_shape={tuple(self.paint_shape)}")
+        else:
+            self.paint_shape = self.mesh_shape
 
         if self.los is not None:
             self.los = np.asarray(self.los)
@@ -663,17 +679,24 @@ class FieldLevelModel(Model):
             if self.full_los_correction:
                 from desi_cmb_fli.cmb_lensing import compute_theoretical_cl_kappa
 
+                # chi upper limit for high-z correction:
+                # - None (default) → integrate to chi_CMB (full CMB)
+                # - 3990 Mpc/h → stop at z≈2.45 (AbacusSummit base shells)
+                chi_source_fid = float(jc.background.radial_comoving_distance(cosmo_fid, 1.0 / (1.0 + self.cmb_z_source))[0])
+                chi_high_z_upper = float(self.chi_high_z_max) if self.chi_high_z_max is not None else chi_source_fid
+                if self.chi_high_z_max is not None:
+                    print(f"  [high-z] chi_high_z_max={self.chi_high_z_max:.0f} Mpc/h (Abacus mode: stops at z≈2.45, not chi_CMB={chi_source_fid:.0f})")
+
                 # 1. Compute Fiducial C_l (needed for 'fixed' and 'taylor')
                 if self.high_z_mode in ["fixed", "taylor"]:
-                    chi_source_fid = float(jc.background.radial_comoving_distance(cosmo_fid, 1.0 / (1.0 + self.cmb_z_source))[0])
                     self.cl_high_z_cached = compute_theoretical_cl_kappa(
                         cosmo_fid,
                         self.ell_grid,
                         chi_max_box,  # chi_min for high-z = chi_max of box
-                        chi_source_fid,
+                        chi_high_z_upper,
                         self.cmb_z_source
                     )
-                    print(f"  Cached C_l^{{high-z}} at fiducial (Mode: {self.high_z_mode}). Shape: {self.cl_high_z_cached.shape}")
+                    print(f"  Cached C_l^{{high-z}} at fiducial (Mode: {self.high_z_mode}, chi={chi_max_box:.0f}→{chi_high_z_upper:.0f}). Shape: {self.cl_high_z_cached.shape}")
 
                 # 2. Compute Gradients for Taylor Expansion
                 if self.high_z_mode == "taylor":
@@ -685,11 +708,12 @@ class FieldLevelModel(Model):
                         # Reconstruct cosmo
                         c_ = get_cosmology(Omega_m=Om, sigma8=s8)
                         chi_source_ = jc.background.radial_comoving_distance(c_, 1.0 / (1.0 + self.cmb_z_source))[0]
+                        chi_upper_ = jnp.minimum(jnp.array(chi_high_z_upper), chi_source_)
                         return compute_theoretical_cl_kappa(
                             c_,
                             self.ell_grid,
                             chi_max_box,
-                            chi_source_,
+                            chi_upper_,
                             self.cmb_z_source
                         )
 
@@ -776,6 +800,56 @@ class FieldLevelModel(Model):
 
         return cosmology, bias, init
 
+    def paint_and_deconv(self, pos, weights=None):
+        """CIC paint + interlace + deconvolve, with optional oversampled Fourier crop.
+
+        Follows montecosmo's approach:
+        - Interlaced CIC painting (order 2) to cancel leading-order aliases
+        - Deconvolution in Fourier space at paint resolution
+        - Fourier crop via chreshape to final resolution (when oversampled)
+        """
+        from desi_cmb_fli.nbody import paint_kernel, rfftk
+
+        paint_shape = tuple(self.paint_shape)
+        final_shape = tuple(self.mesh_shape)
+        oversampled = paint_shape != final_shape
+
+        if not oversampled:
+            # No oversampling: plain CIC paint without deconvolution
+            if weights is None:
+                return cic_paint(jnp.zeros(final_shape), pos)
+            else:
+                return cic_paint(jnp.zeros(final_shape), pos, weights)
+
+        # --- Oversampled path (montecosmo flow) ---
+        # Rescale positions from mesh_shape grid units to paint_shape grid units
+        scale_pos = jnp.asarray(self.paint_shape / self.mesh_shape, dtype=pos.dtype)
+        pos_paint = pos * scale_pos
+
+        # Interlaced CIC painting in Fourier space (interlace_order=2)
+        kvec = rfftk(paint_shape)
+        meshk = jnp.zeros(r2chshape(paint_shape), dtype=complex)
+        interlace_order = 2
+
+        for i_shift in range(interlace_order):
+            shift = i_shift / interlace_order  # 0.0, 0.5
+            if weights is None:
+                mesh_i = cic_paint(jnp.zeros(paint_shape), pos_paint + shift)
+            else:
+                mesh_i = cic_paint(jnp.zeros(paint_shape), pos_paint + shift, weights)
+            phase = jnp.exp(1j * shift * sum(kvec))
+            meshk = meshk + jnp.fft.rfftn(mesh_i) * phase / interlace_order
+
+        # Deconvolve CIC window
+        meshk = meshk / paint_kernel(kvec, order=2)
+
+        # Normalization + Fourier crop (montecosmo order: scale then chreshape)
+        meshk = meshk * np.prod(np.array(paint_shape) / np.array(final_shape))
+        meshk = chreshape(meshk, r2chshape(final_shape))
+        mesh = jnp.fft.irfftn(meshk, s=final_shape)
+
+        return mesh
+
     def evolve(self, params: tuple):
         cosmology, bias, init = params
 
@@ -855,8 +929,7 @@ class FieldLevelModel(Model):
         pos_real = pos
 
         # Paint unbiased matter field in real space (always needed for CMB lensing)
-        matter_mesh = cic_paint(jnp.zeros(self.mesh_shape), pos_real)
-        matter_mesh = deconv_paint(matter_mesh, order=2)
+        matter_mesh = self.paint_and_deconv(pos_real)
         matter_mesh = matter_mesh / jnp.mean(matter_mesh)
         matter_mesh = deterministic("matter_mesh", matter_mesh)
 
@@ -883,16 +956,15 @@ class FieldLevelModel(Model):
             pos_rsd = deterministic("rsd_pos", pos_rsd)
 
             # CIC paint weighted by Lagrangian bias expansion weights
-            gxy_mesh = cic_paint(jnp.zeros(self.mesh_shape), pos_rsd, lbe_weights)
-            gxy_mesh = deconv_paint(gxy_mesh, order=2)
+            gxy_mesh = self.paint_and_deconv(pos_rsd, weights=lbe_weights)
             gxy_mesh = deterministic("gxy_mesh", gxy_mesh)
         else:
             # CMB-only: create dummy gxy_mesh for API consistency
             gxy_mesh = jnp.zeros(self.mesh_shape)
 
-        return {"gxy_mesh": gxy_mesh, "matter_mesh": matter_mesh}
+        return {"gxy_mesh": gxy_mesh, "matter_mesh": matter_mesh, "pos_real": pos_real}
 
-    def likelihood(self, gxy_mesh, matter_mesh=None, cosmology=None, bias=None, temp=1.0):
+    def likelihood(self, gxy_mesh, matter_mesh=None, pos_real=None, cosmology=None, bias=None, temp=1.0):
         """
         A likelihood for cosmological model.
 
@@ -934,7 +1006,7 @@ class FieldLevelModel(Model):
                         cosmology,
                         self.ell_grid,
                         self.box_shape[2],  # chi_min
-                        None,  # chi_max (computed internally)
+                        self.chi_high_z_max,  # None = chi_CMB (default); 3990 Mpc/h for AbacusSummit base
                         self.cmb_z_source,
                         mode=self.high_z_mode,
                         cl_cached=self.cl_high_z_cached,
@@ -952,8 +1024,8 @@ class FieldLevelModel(Model):
                 total_power_ell = self.nell_grid + cl_high_z
                 variance_k = total_power_ell * (npix2**2 / field_area_sr)
 
-                # Mask modes beyond Nyquist (aliased frequencies) in log-prob only
-                nyquist_mask = self.ell_grid > 0.85 * self.ell_nyquist
+                from desi_cmb_fli.cmb_lensing import NYQUIST_FRACTION
+                nyquist_mask = self.ell_grid > NYQUIST_FRACTION * self.ell_nyquist
 
                 sample("kappa_obs", FourierSpaceGaussian(kappa_pred, variance_k, temp=temp, mask=nyquist_mask))
 

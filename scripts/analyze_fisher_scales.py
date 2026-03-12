@@ -8,7 +8,7 @@ import yaml
 from jax import jacfwd
 
 from desi_cmb_fli.bricks import get_cosmology
-from desi_cmb_fli.cmb_lensing import compute_theoretical_cl_kappa
+from desi_cmb_fli.cmb_lensing import NYQUIST_FRACTION, compute_theoretical_cl_kappa
 from desi_cmb_fli.model import get_model_from_config
 
 
@@ -81,7 +81,7 @@ def simple_fisher(config_path="configs/inference/config.yaml"):
     print(f"Max ell in grid: {jnp.max(ell_2d):.1f}")
 
     # Filter valid modes (remove DC mode and modes beyond 0.85*Nyquist, matching likelihood mask)
-    mask = (ell_2d > 20) & (ell_2d <= 0.85 * ell_nyquist) & \
+    mask = (ell_2d > 20) & (ell_2d <= NYQUIST_FRACTION * ell_nyquist) & \
            jnp.isfinite(dCl_dOm_2d) & jnp.isfinite(Cl_2d) & jnp.isfinite(noise_2d)
 
     ell_flat = ell_2d[mask]
@@ -178,7 +178,7 @@ def simple_fisher(config_path="configs/inference/config.yaml"):
     # 5. Binning for Plotting (1D representation)
     n_bins = 20
     l_min = 20
-    l_max = float(0.85 * ell_nyquist)  # Match the mask used in likelihood
+    l_max = float(NYQUIST_FRACTION * ell_nyquist)  # Match the mask used in likelihood
     l_edges = np.linspace(l_min, l_max, n_bins + 1)
     l_centers = 0.5 * (l_edges[1:] + l_edges[:-1])
 

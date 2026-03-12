@@ -4,21 +4,22 @@ from pathlib import Path
 
 import jax
 import jax.numpy as jnp
-import jax.random as jr
 import matplotlib.pyplot as plt
 import numpy as np
 
 from desi_cmb_fli import cmb_lensing, metrics, plot
 from desi_cmb_fli.bricks import get_cosmology
 from desi_cmb_fli.cmb_lensing import (
+    NYQUIST_FRACTION,
     compute_cl_high_z,
     compute_theoretical_cl_gg,
     compute_theoretical_cl_kappa,
     compute_theoretical_cl_kg,
 )
+from desi_cmb_fli.metrics import bin_cl_log
 
 
-def plot_field_slices(truth, output_dir, mesh_shape=None, show=False, box_shape=None, field_size_deg=None, field_npix=None, chi_center=None):
+def plot_field_slices(truth, output_dir, mesh_shape=None, show=False, box_shape=None, field_size_deg=None, field_npix=None, chi_center=None, observation_mode="closure"):
     """
     Plot 2D slices of the generated fields (obs, kappa_obs, kappa_pred).
 
@@ -31,6 +32,7 @@ def plot_field_slices(truth, output_dir, mesh_shape=None, show=False, box_shape=
         field_size_deg (float): Field size in degrees (for galaxy projection).
         field_npix (int): Number of pixels for projection.
         chi_center (float): Comoving distance to box center (for galaxy projection).
+        observation_mode (str): 'closure' or 'abacus' (adjusts panel titles).
     """
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -81,16 +83,26 @@ def plot_field_slices(truth, output_dir, mesh_shape=None, show=False, box_shape=
             axes = list(axes)
 
         # Observed kappa
-        im0 = axes[0].imshow(truth["kappa_obs"], origin="lower", cmap="RdBu_r")
-        axes[0].set_title("CMB Convergence κ (observed)")
+        _obs_arr = np.asarray(truth["kappa_obs"])
+        _vmax_obs = float(np.percentile(np.abs(_obs_arr), 99))
+        _obs_title = ("κ observed (Abacus + N_ℓ noise)" if observation_mode == "abacus"
+                      else "CMB Convergence κ (observed)")
+        im0 = axes[0].imshow(_obs_arr, origin="lower", cmap="RdBu_r",
+                             vmin=-_vmax_obs, vmax=_vmax_obs)
+        axes[0].set_title(_obs_title)
         axes[0].set_xlabel("x [pix]")
         axes[0].set_ylabel("y [pix]")
         plt.colorbar(im0, ax=axes[0], label="κ")
 
-        # Predicted kappa (if available)
+        # Predicted kappa
+        _pred_title = ("κ Abacus (noiseless)" if observation_mode == "abacus"
+                       else "CMB Convergence κ (predicted)")
         if has_kappa_pred:
-            im1 = axes[1].imshow(truth["kappa_pred"], origin="lower", cmap="RdBu_r")
-            axes[1].set_title("CMB Convergence κ (predicted)")
+            _pred_arr = np.asarray(truth["kappa_pred"])
+            _vmax_pred = float(np.percentile(np.abs(_pred_arr), 99))
+            im1 = axes[1].imshow(_pred_arr, origin="lower", cmap="RdBu_r",
+                                 vmin=-_vmax_pred, vmax=_vmax_pred)
+            axes[1].set_title(_pred_title)
             plt.colorbar(im1, ax=axes[1], label="κ")
         else:
             axes[1].axis('off')
@@ -124,347 +136,378 @@ def plot_field_slices(truth, output_dir, mesh_shape=None, show=False, box_shape=
             plt.show()
         plt.close()
 
-def compute_and_plot_spectra(model, truth_params, output_dir=None, n_realizations=1, seed=None, show=False, suffix="", model_config=None):
+
+def measure_spectra(truth, model, model_config=None):
     """
-    Compute and plot C_l spectra (kappa-kappa, galaxy-galaxy, cross) from simulations.
-    Can run multiple realizations to estimate variance.
+    Measure Cℓ spectra on the maps in `truth`.
+
+    Pure measurement — no plotting, no theory curves.
+    Use this to accumulate spectra over multiple realizations.
 
     Args:
-        model (FieldLevelModel): Initialized model.
-        truth_params (dict): Truth parameters for generation.
-        output_dir (str or Path, optional): Output directory. Defaults to 'figures'.
-        n_realizations (int): Number of realizations to average.
-        seed (int, optional): Base random seed.
-        show (bool): Whether to show the plot interactively.
-        suffix (str): Suffix for the output filename.
-        model_config (dict): Model configuration (optional, if not provided will try to use model.config).
+        truth (dict): Map dictionary with keys like 'kappa_pred', 'kappa_obs', 'obs'.
+        model (FieldLevelModel): Initialized model (for field geometry).
+        model_config (dict, optional): Model config dict (for box_shape in galaxy projection).
 
     Returns:
-        dict: Dictionary containing computed spectra (mean and std).
+        dict: {ell, cl_kk_pred, cl_kk_obs, cl_gg, cl_kg}. Missing keys are None.
     """
-    if output_dir is None:
-        output_dir = Path("figures")
-    else:
-        output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    print("=" * 80)
-    print("VALIDATION: Computing & Plotting Spectra")
-    print("=" * 80)
-
     if model_config is None:
-        # Fallback if model has config attribute (future proofing)
         model_config = getattr(model, "config", {})
 
     cmb_enabled = model.cmb_enabled
-    print(f"CMB Lensing Enabled: {cmb_enabled}")
+    has_kappa_pred = "kappa_pred" in truth
+    has_kappa_obs = "kappa_obs" in truth
+    has_galaxies = "obs" in truth
 
-    if cmb_enabled:
-        print(f"  Sky area: {model.cmb_field_size_deg**2:.2f} deg²")
-        print(f"  CMB npix: {model.cmb_field_npix}")
-
-    base_seed = seed if seed is not None else 42 # Default seed if None
-
-    # Get cosmology for projection
-    cosmo_val = get_cosmology(**truth_params)
-    chi_center_val = float(model.box_center[2]) if hasattr(model, "box_center") else float(model.box_shape[2] / 2.0)
-
-    # Determine field size for projection
     if cmb_enabled:
         field_size = model.cmb_field_size_deg
         npix = model.cmb_field_npix
     else:
-        # Calculate field size for full box at z_center
         chi_max_box = model.box_shape[2]
         half_angle_rad = np.arctan(model.box_shape[0] / (2.0 * chi_max_box))
         field_size = float(2.0 * half_angle_rad * (180.0 / np.pi))
-        npix = 256 # Default npix for visualization
-        print(f"  Computed sky area (for galaxy projection): {field_size**2:.2f} deg²")
+        npix = 256
 
-    # Storage
-    all_cl_kk_box = []
-    all_cl_kk_obs = []
-    all_cl_gg = []
-    all_cl_kg = []
+    chi_center_val = float(model.box_center[2]) if hasattr(model, "box_center") else float(model.box_shape[2] / 2.0)
+
     ell = None
+    cl_kk_pred, cl_kk_obs, cl_gg, cl_kg = None, None, None, None
 
-    # Loop over realizations
-    print(f"Generating {n_realizations} realization(s)...")
-    for i_real in range(n_realizations):
-        seed_i = base_seed + i_real
-        print(f"  Realization {i_real+1}/{n_realizations} (seed={seed_i})", end="\r")
+    # Kappa spectra
+    if cmb_enabled and has_kappa_obs:
+        ell, cl_kk_obs = metrics.get_cl_2d(truth["kappa_obs"], field_size_deg=field_size)
+        ell, cl_kk_obs = np.asarray(ell), np.asarray(cl_kk_obs)
 
-        # Generate truth
-        truth = model.predict(
-            samples=truth_params,
-            hide_base=False,
-            hide_samp=False,
-            hide_det=False,
-            frombase=True,
-            rng=jr.key(seed_i),
+    if cmb_enabled and has_kappa_pred:
+        ell_tmp, cl_kk_pred = metrics.get_cl_2d(truth["kappa_pred"], field_size_deg=field_size)
+        cl_kk_pred = np.asarray(cl_kk_pred)
+        if ell is None:
+            ell = np.asarray(ell_tmp)
+
+    # Galaxy spectra
+    if has_galaxies:
+        box_shape = model_config.get("box_shape", model.box_shape)
+        gxy_field = np.array(truth["obs"])
+        gxy_proj = cmb_lensing.project_flat_sky(
+            gxy_field, box_shape, field_size,
+            npix if cmb_enabled else 256, chi_center_val,
         )
+        gxy_mean = jnp.mean(gxy_proj)
+        gxy_delta = (gxy_proj - gxy_mean) / gxy_mean
+        ell_tmp, cl_gg = metrics.get_cl_2d(gxy_delta, field_size_deg=field_size)
+        cl_gg = np.asarray(cl_gg)
+        if ell is None:
+            ell = np.asarray(ell_tmp)
 
-        # Project galaxy field (only if galaxies enabled)
-        if "obs" in truth:
-            gxy_field = np.array(truth["obs"])
-            gxy_proj = cmb_lensing.project_flat_sky(
-                gxy_field,
-                model_config["box_shape"],
-                field_size,
-                npix if cmb_enabled else 256,
-                chi_center_val
-            )
+        # Cross-spectrum κ × g
+        if cmb_enabled and has_kappa_pred:
+            _, cl_kg = metrics.get_cl_2d(truth["kappa_pred"], gxy_delta, field_size_deg=field_size)
+            cl_kg = np.asarray(cl_kg)
 
-            # Compute spectra
-            gxy_mean = jnp.mean(gxy_proj)
-            gxy_delta = (gxy_proj - gxy_mean) / gxy_mean
-            ell_i, cl_gg_i = metrics.get_cl_2d(gxy_delta, field_size_deg=field_size)
-            all_cl_gg.append(np.array(cl_gg_i))
+    # ── Log-binned versions ────────────────────────────────────────────────
+    ell_b, cl_kk_pred_b, cl_kk_obs_b, cl_gg_b, cl_kg_b = (None,) * 5
+    n_modes_b = None
+    if ell is not None:
+        if cl_kk_obs is not None:
+            ell_b, cl_kk_obs_b, n_modes_b = bin_cl_log(ell, cl_kk_obs)
+        if cl_kk_pred is not None:
+            ell_b_tmp, cl_kk_pred_b, n_modes_b_tmp = bin_cl_log(ell, cl_kk_pred)
+            if ell_b is None:
+                ell_b, n_modes_b = ell_b_tmp, n_modes_b_tmp
+        if cl_gg is not None:
+            ell_b_gg, cl_gg_b, _ = bin_cl_log(ell, cl_gg)
+            if ell_b is None:
+                ell_b = ell_b_gg
+        if cl_kg is not None:
+            _, cl_kg_b, _ = bin_cl_log(ell, cl_kg)
 
-        if cmb_enabled:
-            # Compute kappa from matter field
-            kappa_box = cmb_lensing.density_field_to_convergence(
-                truth['matter_mesh'],
-                model.box_shape,
-                cosmo_val,
-                model.cmb_field_size_deg,
-                model.cmb_field_npix,
-                model.cmb_z_source,
-                box_center_chi=chi_center_val,
-            )
-            if kappa_box.ndim == 3 and kappa_box.shape[0] == 1:
-                kappa_box = kappa_box.squeeze(0)
-            kappa_box = jnp.asarray(kappa_box, dtype=jnp.float64)
-            kappa_obs = truth['kappa_obs']
+    return {"ell": ell, "cl_kk_pred": cl_kk_pred, "cl_kk_obs": cl_kk_obs,
+            "cl_gg": cl_gg, "cl_kg": cl_kg,
+            # binned versions
+            "ell_b": ell_b, "cl_kk_pred_b": cl_kk_pred_b, "cl_kk_obs_b": cl_kk_obs_b,
+            "cl_gg_b": cl_gg_b, "cl_kg_b": cl_kg_b, "n_modes_b": n_modes_b}
 
-            ell_i, cl_kk_box_i = metrics.get_cl_2d(kappa_box, field_size_deg=field_size)
-            _, cl_kk_obs_i = metrics.get_cl_2d(kappa_obs, field_size_deg=field_size)
 
-            # Compute cross-spectrum only if galaxy data available
-            if "obs" in truth:
-                _, cl_kg_i = metrics.get_cl_2d(kappa_box, gxy_delta, field_size_deg=field_size)
-                all_cl_kg.append(np.array(cl_kg_i))
+def plot_spectra(truth, model, output_dir, cosmo_params=None, model_config=None,
+                 observation_mode="closure", show=False, suffix=""):
+    """
+    Measure and plot Cℓ spectra from the maps in `truth`, compared to Limber theory.
 
-            all_cl_kk_box.append(np.array(cl_kk_box_i))
-            all_cl_kk_obs.append(np.array(cl_kk_obs_i))
-            if ell is None:
-                ell = ell_i
+    Works for any observation mode (closure, Abacus, real data).
+    Measures spectra on the provided maps — does NOT generate new realizations.
 
-        if ell is None and len(all_cl_gg) > 0:
-            ell = ell_i
-    print("") # Newline
+    Panels:
+        - κκ auto-spectrum:
+            closure: 3 pairs (grey=obs, purple=pred+highz, blue=pred)
+            abacus:  2 pairs (grey=obs, purple=pred which is full LOS)
+        - Galaxy auto + κg cross-spectrum (if obs present)
 
-    # Compute mean and std
-    if len(all_cl_gg) > 0:
-        all_cl_gg = np.array(all_cl_gg)
-        cl_gg_mean = np.nanmean(all_cl_gg, axis=0)
-        cl_gg_std = np.nanstd(all_cl_gg, axis=0)
-    else:
-        cl_gg_mean, cl_gg_std = None, None
+    Args:
+        truth (dict): Map dictionary. Recognized keys:
+            'kappa_pred' (2D, noiseless κ), 'kappa_obs' (2D, with noise),
+            'obs' (3D galaxy field), 'matter_mesh' (3D matter field).
+        model (FieldLevelModel): Initialized model (for field geometry, N_ell, etc.).
+        output_dir (Path or str): Output directory for the plot.
+        cosmo_params (dict, optional): Cosmology for Limber curves {Omega_m, sigma8, ...}.
+            If None, uses model.loc_fid.
+        model_config (dict, optional): Model config dict (for box_shape in galaxy projection).
+        observation_mode (str): 'closure' or 'abacus'. Controls which curves are shown.
+        show (bool): Whether to show the plot interactively.
+        suffix (str): Suffix for the output filename.
 
+    Returns:
+        dict: Measured spectra {ell, cl_kk_pred, cl_kk_obs, cl_gg, cl_kg}.
+    """
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    if model_config is None:
+        model_config = getattr(model, "config", {})
+
+    print("=" * 80)
+    print("VALIDATION: Power Spectra")
+    print("=" * 80)
+
+    cmb_enabled = model.cmb_enabled
+    has_kappa_obs = "kappa_obs" in truth
+    has_galaxies = "obs" in truth
+
+    if not has_kappa_obs and not has_galaxies:
+        print("  No maps to measure spectra on, skipping.")
+        return {}
+
+    # ── Cosmology for Limber theory ──────────────────────────────────────────
+    if cosmo_params is None:
+        cosmo_params = {k: v for k, v in model.loc_fid.items()
+                        if k in ("Omega_m", "sigma8")}
+    cosmo_val = get_cosmology(**cosmo_params)
+
+    # ── Field geometry ───────────────────────────────────────────────────────
     if cmb_enabled:
-        if len(all_cl_kk_box) > 0:
-            all_cl_kk_box = np.array(all_cl_kk_box)
-            all_cl_kk_obs = np.array(all_cl_kk_obs)
-
-            cl_kk_box_mean = np.nanmean(all_cl_kk_box, axis=0)
-            cl_kk_box_std = np.nanstd(all_cl_kk_box, axis=0)
-            cl_kk_obs_mean = np.nanmean(all_cl_kk_obs, axis=0)
-        else:
-            cl_kk_box_mean, cl_kk_obs_mean = None, None
-            cl_kk_box_std = None
-
-        if len(all_cl_kg) > 0:
-            all_cl_kg = np.array(all_cl_kg)
-            cl_kg_mean = np.nanmean(all_cl_kg, axis=0)
-            cl_kg_std = np.nanstd(all_cl_kg, axis=0)
-        else:
-            cl_kg_mean, cl_kg_std = None, None
+        field_size = model.cmb_field_size_deg
+        npix = model.cmb_field_npix
     else:
-        cl_kk_box_mean, cl_kk_obs_mean, cl_kg_mean = None, None, None
+        chi_max_box = model.box_shape[2]
+        half_angle_rad = np.arctan(model.box_shape[0] / (2.0 * chi_max_box))
+        field_size = float(2.0 * half_angle_rad * (180.0 / np.pi))
+        npix = 256
 
-    # Theoretical Spectra (Limber)
-    print("Computing theoretical spectra...")
-    chi_min, chi_max = 1.0, float(model.box_shape[2])
-    z_source = model.cmb_z_source
-    b1_lag = truth_params.get("b1", 1.0)
-    bE = 1.0 + b1_lag
-
-    ell_clean = np.geomspace(10, 2000, 100)
-    cl_gg_theory_clean = compute_theoretical_cl_gg(cosmo_val, jnp.array(ell_clean), chi_min, chi_max, bE)
-
-    if cmb_enabled:
-        cl_kk_theory_clean = compute_theoretical_cl_kappa(cosmo_val, jnp.array(ell_clean), chi_min, chi_max, z_source)
-        cl_kg_theory_clean = compute_theoretical_cl_kg(cosmo_val, jnp.array(ell_clean), chi_min, chi_max, z_source, bE)
-
-        # Compute high-z correction using centralized function
-        cl_high_z_theory = np.zeros_like(ell_clean)
-        if model.full_los_correction:
-            # Compute high-z on native grid first
-            cl_high_z_grid = compute_cl_high_z(
-                cosmo_val,
-                model.ell_grid,
-                model.box_shape[2],  # chi_min
-                None,  # chi_max computed internally
-                z_source,
-                mode=model.high_z_mode,
-                cl_cached=model.cl_high_z_cached,
-                gradients=model.high_z_gradients,
-                loc_fid=model.loc_fid
-            )
-
-            # Interpolate to ell_clean for plotting
-            ell_grid_flat = model.ell_grid.flatten()
-            cl_high_z_flat = np.array(cl_high_z_grid).flatten()
-            sort_idx = np.argsort(ell_grid_flat)
-            ell_sorted = ell_grid_flat[sort_idx]
-            cl_sorted = cl_high_z_flat[sort_idx]
-            cl_high_z_theory = np.interp(ell_clean, ell_sorted, cl_sorted)
-
-        print(f"  High-z correction mode: {model.high_z_mode if model.full_los_correction else 'disabled'}")
-
-    # Plotting
-    print("Generating plots...")
-
-    # Compute Nyquist frequency in angular space: ell_max = pi * npix / theta_field_rad
     ell_nyquist = np.pi * npix / (field_size * np.pi / 180.0)
 
-    galaxies_enabled = model.galaxies_enabled if hasattr(model, 'galaxies_enabled') else (cl_gg_mean is not None)
+    # ── Theoretical Limber spectra ───────────────────────────────────────────
+    z_source = model.cmb_z_source
+    chi_min, chi_max_theory = 1.0, float(model.box_shape[2])
 
-    if cmb_enabled and galaxies_enabled:
-        # Joint mode: show both CMB and galaxy panels
-        fig, axes = plt.subplots(1, 2, figsize=(14, 6))
-        ax_kk = axes[0]
-        ax_gg = axes[1]
-    elif cmb_enabled:
-        # CMB-only mode: show only CMB panel
-        fig, ax_kk = plt.subplots(1, 1, figsize=(8, 6))
-        ax_gg = None
-    else:
-        # Galaxies-only mode: show only galaxy panel
-        fig, ax_gg = plt.subplots(1, 1, figsize=(8, 6))
-        ax_kk = None
+    b1_lag = cosmo_params.get("b1", model.loc_fid.get("b1", 1.0))
+    bE = 1.0 + b1_lag
 
-    # CMB Kappa Auto Spectrum
-    if cmb_enabled and ax_kk is not None:
-        # Noise
-        cmb_nell_cfg = model_config.get("cmb_noise_nell", {})
-        nell_at_ell_clean = np.zeros_like(ell_clean)
-        if isinstance(cmb_nell_cfg, str):
-            try:
-                nell_data = np.loadtxt(cmb_nell_cfg)
-                if nell_data.ndim == 1:
-                    nell_ell, nell_val = np.arange(len(nell_data)), nell_data
-                else:
-                    nell_ell, nell_val = nell_data[:, 0], nell_data[:, 1]
-                nell_at_ell_clean = np.interp(ell_clean, nell_ell, nell_val) * model.cmb_noise_scaling
-            except Exception:
-                pass
-        elif isinstance(cmb_nell_cfg, dict):
-             nell_at_ell_clean = np.interp(ell_clean, np.array(cmb_nell_cfg["ell"]), np.array(cmb_nell_cfg["N_ell"])) * model.cmb_noise_scaling
+    ell_theory = np.geomspace(10, 2000, 100)
 
-        # Kappa Auto
-        plt.sca(ax_kk)
-        valid_idx = np.isfinite(ell) & np.isfinite(cl_kk_box_mean) & (ell > 0)
-        ell_valid = ell[valid_idx]
+    cl_kk_theory, cl_gg_theory, cl_kg_theory = None, None, None
+    nell_at_theory = np.zeros_like(ell_theory)
+    cl_high_z_theory = np.zeros_like(ell_theory)
 
-        # Always show box (no noise)
-        if n_realizations > 1:
-            plt.fill_between(ell_valid, (cl_kk_box_mean - cl_kk_box_std)[valid_idx], (cl_kk_box_mean + cl_kk_box_std)[valid_idx], color='blue', alpha=0.2)
-        plt.loglog(ell_valid, cl_kk_box_mean[valid_idx], '-', color='blue', lw=1.5, label=r"$C_\ell^{\kappa \kappa}$ (box)")
-        plt.plot(ell_clean, np.array(cl_kk_theory_clean), '--', color='blue', alpha=0.8, lw=2, label="Theory (box)")
+    if cmb_enabled:
+        # Box-only kappa theory (chi_min to chi_max_box)
+        cl_kk_theory = np.asarray(compute_theoretical_cl_kappa(
+            cosmo_val, jnp.array(ell_theory), chi_min, chi_max_theory, z_source
+        ))
 
-        # With or without high-z correction
-        if model.full_los_correction and np.any(cl_high_z_theory > 0):
-            # Compute high-z correction and interpolate to ell_valid for obs curve
+        # N_ell interpolated to theory grid
+        ell_grid_flat = model.ell_grid.flatten()
+        sort_idx = np.argsort(ell_grid_flat)
+        nell_at_theory = np.exp(np.interp(
+            np.log(np.maximum(ell_theory, 1e-5)),
+            np.log(np.maximum(ell_grid_flat[sort_idx], 1e-5)),
+            np.log(model.nell_grid.flatten()[sort_idx])
+        ))
+
+        # High-z correction
+        if model.full_los_correction:
+            _high_z_mode = 'exact' if observation_mode == 'abacus' else model.high_z_mode
             cl_high_z_grid = compute_cl_high_z(
                 cosmo_val,
                 model.ell_grid,
                 model.box_shape[2],
-                None,
+                model.chi_high_z_max,
                 z_source,
-                mode=model.high_z_mode,
-                cl_cached=model.cl_high_z_cached,
-                gradients=model.high_z_gradients,
-                loc_fid=model.loc_fid
+                mode=_high_z_mode, cl_cached=model.cl_high_z_cached,
+                gradients=model.high_z_gradients, loc_fid=model.loc_fid,
             )
-
-            ell_grid_flat = model.ell_grid.flatten()
             cl_high_z_flat = np.array(cl_high_z_grid).flatten()
-            sort_idx = np.argsort(ell_grid_flat)
-            ell_sorted = ell_grid_flat[sort_idx]
-            cl_sorted = cl_high_z_flat[sort_idx]
+            cl_high_z_theory = np.interp(ell_theory, ell_grid_flat[sort_idx], cl_high_z_flat[sort_idx])
 
-            # Measured: Box + N_ell + high-z
-            cl_kk_total_obs = cl_kk_obs_mean[valid_idx]
-            plt.loglog(ell_valid, cl_kk_total_obs, '-', color='red', lw=2,
-                       label=r"Box + $N_\ell$ + $C_\ell^{\rm high-z}$")
+    if has_galaxies:
+        cl_gg_theory = np.asarray(compute_theoretical_cl_gg(
+            cosmo_val, jnp.array(ell_theory), chi_min, chi_max_theory, bE
+        ))
+        if cmb_enabled:
+            cl_kg_theory = np.asarray(compute_theoretical_cl_kg(
+                cosmo_val, jnp.array(ell_theory), chi_min, chi_max_theory, z_source, bE
+            ))
 
-            # Theory: Theory + N_ell + high-z
-            cl_total_theory = np.array(cl_kk_theory_clean) + nell_at_ell_clean + cl_high_z_theory
-            plt.plot(ell_clean, cl_total_theory, '--', color='red', alpha=0.8, lw=2,
-                     label=r"Theory + $N_\ell$ + $C_\ell^{\rm high-z}$")
-        else:
-            # No high-z: just show Box + N_ell and Theory + N_ell
-            plt.loglog(ell_valid, cl_kk_obs_mean[valid_idx], '-', color='gray', lw=2, label=r"Box + $N_\ell$")
-            plt.plot(ell_clean, np.array(cl_kk_theory_clean) + nell_at_ell_clean, '--', color='gray', alpha=0.8, lw=2, label=r"Theory + $N_\ell$")
+    # ── Measure spectra on the provided maps ─────────────────────────────────
+    spectra = measure_spectra(truth, model, model_config)
+    ell        = spectra["ell"]
+    cl_kk_pred = spectra["cl_kk_pred"]
+    cl_kk_obs  = spectra["cl_kk_obs"]
+    cl_gg      = spectra["cl_gg"]
+    cl_kg      = spectra["cl_kg"]
+    # Binned versions
+    ell_b        = spectra["ell_b"]
+    cl_kk_pred_b = spectra["cl_kk_pred_b"]
+    cl_kk_obs_b  = spectra["cl_kk_obs_b"]
+    cl_gg_b      = spectra["cl_gg_b"]
+    cl_kg_b      = spectra["cl_kg_b"]
+    valid_b = ell_b is not None and len(ell_b) > 0
 
-        plt.xlabel(r"$\ell$"), plt.ylabel(r"$C_\ell$"), plt.title(r"$C_\ell^{\kappa \kappa}$"), plt.legend(fontsize=9), plt.grid(True, alpha=0.2)
-        plt.xlim(10, 0.85 * ell_nyquist)  # Cut at 0.85*Nyquist (inference limit)
+    # ── Plot ─────────────────────────────────────────────────────────────────
+    print("  Generating plot...")
+    has_cmb_panel = cmb_enabled and (cl_kk_pred is not None or cl_kk_obs is not None)
+    has_gxy_panel = cl_gg is not None
 
-    # Galaxy Auto & Cross Spectra
-    if ax_gg is not None:
+    if has_cmb_panel and has_gxy_panel:
+        fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+        ax_kk, ax_gg = axes
+    elif has_cmb_panel:
+        fig, ax_kk = plt.subplots(1, 1, figsize=(8, 6))
+        ax_gg = None
+    elif has_gxy_panel:
+        fig, ax_gg = plt.subplots(1, 1, figsize=(8, 6))
+        ax_kk = None
+    else:
+        print("  Nothing to plot.")
+        return {}
+
+    # ── CMB κ panel ──────────────────────────────────────────────────────────
+    if has_cmb_panel:
+        plt.sca(ax_kk)
+        valid = (ell > 10) & (ell < NYQUIST_FRACTION * ell_nyquist)
+
+        cl_box_highz_theory = cl_kk_theory + cl_high_z_theory
+        cl_total_theory = cl_box_highz_theory + nell_at_theory
+
+        cl_high_z_on_ell = np.interp(ell, ell_theory, cl_high_z_theory)
+
+        # ── Raw faded lines ───────────────────────────────────────────────────
+        if cl_kk_obs is not None:
+            v_grey = valid & np.isfinite(cl_kk_obs)
+            plt.loglog(ell[v_grey], cl_kk_obs[v_grey], "-", color="grey", lw=0.4, alpha=0.3)
+        if cl_kk_pred is not None:
+            _pred_raw = (cl_kk_pred + cl_high_z_on_ell) if observation_mode == "closure" else cl_kk_pred
+            v_pred_raw = valid & np.isfinite(_pred_raw)
+            _pred_raw_color = "steelblue" if observation_mode == "closure" else "purple"
+            plt.loglog(ell[v_pred_raw], _pred_raw[v_pred_raw], "-", color=_pred_raw_color, lw=0.4, alpha=0.3)
+
+        # ── Binned markers ────────────────────────────────────────────────────
+        if valid_b:
+            vb_mask = (ell_b > 10) & (ell_b < NYQUIST_FRACTION * ell_nyquist)
+            if cl_kk_obs_b is not None:
+                vb = vb_mask & np.isfinite(cl_kk_obs_b)
+                plt.errorbar(ell_b[vb], cl_kk_obs_b[vb], fmt="o", color="grey",
+                             ms=4, lw=1.2, capsize=2,
+                             label=r"$C_\ell^{\kappa\kappa}$ (obs, binned)")
+            if cl_kk_pred_b is not None:
+                _pred_b = (cl_kk_pred_b + np.interp(ell_b, ell_theory, cl_high_z_theory)
+                           if observation_mode == "closure" else cl_kk_pred_b)
+                vb = vb_mask & np.isfinite(_pred_b)
+                _pred_b_label = (
+                    r"$C_\ell^{\kappa\kappa}$ (pred + high-$z$, binned)"
+                    if observation_mode == "closure"
+                    else r"$C_\ell^{\kappa\kappa}$ (Abacus, noiseless, binned)"
+                )
+                plt.errorbar(ell_b[vb], _pred_b[vb], fmt="s", color="purple",
+                             ms=4, lw=1.2, capsize=2,
+                             label=_pred_b_label)
+            if observation_mode == "closure" and cl_kk_pred_b is not None:
+                vb = vb_mask & np.isfinite(cl_kk_pred_b)
+                plt.errorbar(ell_b[vb], cl_kk_pred_b[vb], fmt="^", color="steelblue",
+                             ms=4, lw=1, capsize=2,
+                             label=r"$C_\ell^{\kappa\kappa}$ (pred box, binned)")
+
+        # ── Theory dashed lines ───────────────────────────────────────────────
+        plt.plot(ell_theory, cl_total_theory, "--", color="grey", lw=1.5, alpha=0.9,
+                 label=r"Limber (Box + high-$z$ + $N_\ell$)")
+        plt.plot(ell_theory, cl_box_highz_theory, "--", color="purple", lw=1.5, alpha=0.9,
+                 label=r"Limber (Box + high-$z$)")
+        if observation_mode == "closure":
+            plt.plot(ell_theory, cl_kk_theory, "--", color="steelblue", lw=1.5, alpha=0.9,
+                     label=r"Limber (Box)")
+
+        mode_label = "closure" if observation_mode == "closure" else "Abacus"
+        plt.xlabel(r"$\ell$")
+        plt.ylabel(r"$C_\ell$")
+        plt.title(rf"$C_\ell^{{\kappa\kappa}}$ — {mode_label}")
+        plt.legend(fontsize=8)
+        plt.grid(True, alpha=0.2)
+        plt.xlim(10, NYQUIST_FRACTION * ell_nyquist)
+
+    # ── Galaxy panel ─────────────────────────────────────────────────────────
+    if has_gxy_panel:
         plt.sca(ax_gg)
-        if cl_gg_mean is not None:
-            valid_idx_gg = np.isfinite(ell) & np.isfinite(cl_gg_mean) & (ell > 0)
-            ell_valid_gg = ell[valid_idx_gg]
-            if n_realizations > 1:
-                plt.fill_between(ell_valid_gg, (cl_gg_mean - cl_gg_std)[valid_idx_gg], (cl_gg_mean + cl_gg_std)[valid_idx_gg], color='green', alpha=0.2)
-            plt.loglog(ell_valid_gg, cl_gg_mean[valid_idx_gg], '-', color='green', lw=1.5, label=r"$C_\ell^{gg}$ (Mean)")
-            plt.plot(ell_clean, np.array(cl_gg_theory_clean), '--', color='green', alpha=0.8, lw=2, label=r"Theory $C_\ell^{gg}$")
+        valid_gg = (ell > 10) & (ell < NYQUIST_FRACTION * ell_nyquist) & np.isfinite(cl_gg)
+        plt.loglog(ell[valid_gg], cl_gg[valid_gg], "-", color="green", lw=0.4, alpha=0.3)
+        if valid_b and cl_gg_b is not None:
+            vb_gg = (ell_b > 10) & (ell_b < NYQUIST_FRACTION * ell_nyquist) & np.isfinite(cl_gg_b)
+            plt.errorbar(ell_b[vb_gg], cl_gg_b[vb_gg], fmt="o", color="green",
+                         ms=4, lw=1.2, capsize=2, label=r"$C_\ell^{gg}$ (binned)")
+        if cl_gg_theory is not None:
+            plt.plot(ell_theory, np.array(cl_gg_theory), "--", color="green",
+                     alpha=0.8, lw=2, label=r"Limber $C_\ell^{gg}$")
 
-        if cmb_enabled and cl_kg_mean is not None:
-            if n_realizations > 1:
-                valid_idx_gg = np.isfinite(ell) & np.isfinite(cl_kg_mean) & (ell > 0)
-                ell_valid_gg = ell[valid_idx_gg]
-                plt.fill_between(ell_valid_gg, np.abs(cl_kg_mean - cl_kg_std)[valid_idx_gg], np.abs(cl_kg_mean + cl_kg_std)[valid_idx_gg], color='red', alpha=0.2)
-            else:
-                valid_idx_gg = np.isfinite(ell) & np.isfinite(cl_kg_mean) & (ell > 0)
-                ell_valid_gg = ell[valid_idx_gg]
-            plt.loglog(ell_valid_gg, np.abs(cl_kg_mean)[valid_idx_gg], '-', color='red', lw=1.5, label=r"|$C_\ell^{\kappa g}$| (Mean)")
-            plt.plot(ell_clean, np.abs(np.array(cl_kg_theory_clean)), '--', color='red', alpha=0.8, lw=2, label=r"Theory |$C_\ell^{\kappa g}$|")
+        if cl_kg is not None:
+            valid_kg = (ell > 10) & (ell < NYQUIST_FRACTION * ell_nyquist) & np.isfinite(cl_kg)
+            plt.loglog(ell[valid_kg], np.abs(cl_kg[valid_kg]), "-", color="red",
+                       lw=0.4, alpha=0.3)
+            if valid_b and cl_kg_b is not None:
+                vb_kg = (ell_b > 10) & (ell_b < NYQUIST_FRACTION * ell_nyquist) & np.isfinite(cl_kg_b)
+                plt.errorbar(ell_b[vb_kg], np.abs(cl_kg_b[vb_kg]), fmt="s", color="red",
+                             ms=4, lw=1.2, capsize=2, label=r"|$C_\ell^{\kappa g}$| (binned)")
+            if cl_kg_theory is not None:
+                plt.plot(ell_theory, np.abs(np.array(cl_kg_theory)), "--", color="red",
+                         alpha=0.8, lw=2, label=r"Limber |$C_\ell^{\kappa g}$|")
             plt.title(r"Galaxy Auto & Cross Spectra")
-        elif cl_gg_mean is not None:
+        else:
             plt.title(r"Galaxy Auto Power Spectrum")
 
-        plt.xlabel(r"$\ell$"), plt.ylabel(r"$C_\ell$"), plt.legend(), plt.grid(True, alpha=0.2)
-        plt.xlim(10, 0.85 * ell_nyquist)  # Cut at 0.85*Nyquist (inference limit)
+        plt.xlabel(r"$\ell$")
+        plt.ylabel(r"$C_\ell$")
+        plt.legend(fontsize=9)
+        plt.grid(True, alpha=0.2)
+        plt.xlim(10, NYQUIST_FRACTION * ell_nyquist)
+
     plt.tight_layout()
-    plt.subplots_adjust(bottom=0.15) # Make room for info box
+    plt.subplots_adjust(bottom=0.12)
 
-    # Metadata Info Box
-    cell_val = float(model.cell_shape[0]) if hasattr(model, "cell_shape") else model_config.get('cell_size', 0)
-    box_x, box_y, box_z = float(model.box_shape[0]), float(model.box_shape[1]), float(model.box_shape[2])
-    mesh_x, mesh_y, mesh_z = int(model.mesh_shape[0]), int(model.mesh_shape[1]), int(model.mesh_shape[2])
-
-    info_str = f"Box: [{box_x:.0f}, {box_y:.0f}, {box_z:.0f}] Mpc/h | Mesh: ({mesh_x}, {mesh_y}, {mesh_z}) | Cell: {cell_val:.1f} Mpc/h"
+    # Info box
+    box_x, box_y, box_z = (float(model.box_shape[i]) for i in range(3))
+    mesh_x, mesh_y, mesh_z = (int(model.mesh_shape[i]) for i in range(3))
+    cell_val = float(model.cell_shape[0]) if hasattr(model, "cell_shape") else 0
+    info = (
+        f"Box: [{box_x:.0f}, {box_y:.0f}, {box_z:.0f}] Mpc/h | "
+        f"Mesh: ({mesh_x}, {mesh_y}, {mesh_z}) | Cell: {cell_val:.1f} Mpc/h"
+    )
     if cmb_enabled:
-         info_str += f" | Field: {field_size:.1f}°"
-    info_str += f" | N={n_realizations}"
-
-    plt.figtext(0.5, 0.02, info_str, ha='center', fontsize=9,
-                bbox={'facecolor': 'oldlace', 'alpha': 0.5, 'edgecolor': 'grey', 'boxstyle': 'round,pad=0.5'})
+        info += f" | Field: {field_size:.1f}°"
+    if cosmo_params:
+        info += f" | Ω_m={cosmo_params.get('Omega_m', '?')}, σ₈={cosmo_params.get('sigma8', '?')}"
+    plt.figtext(0.5, 0.02, info, ha="center", fontsize=8,
+                bbox={"facecolor": "oldlace", "alpha": 0.5,
+                      "edgecolor": "grey", "boxstyle": "round,pad=0.5"})
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     outfile = output_dir / f"cl_spectra{suffix}_{timestamp}.png"
-    plt.savefig(outfile, dpi=150, bbox_inches='tight')
-    print(f"✓ Saved: {outfile}")
+    fig.savefig(outfile, dpi=150, bbox_inches="tight")
+    print(f"  ✓ Saved: {outfile}")
 
     if show:
         plt.show()
     plt.close()
 
-    return {"ell": ell, "cl_gg_mean": cl_gg_mean, "cl_kk_mean": cl_kk_box_mean}
+    return {"ell": ell, "cl_kk_pred": cl_kk_pred, "cl_kk_obs": cl_kk_obs,
+            "cl_gg": cl_gg, "cl_kg": cl_kg}
+
 
 def plot_cmb_noise_spectrum(model, output_dir, show=False):
     """

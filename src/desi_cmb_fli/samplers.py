@@ -350,7 +350,11 @@ def mclmc_warmup(
             num_effective_samples=256,  # NOTE: higher value implies slower averaging rate
             params=config,
         )
-        debug.print("Performed {n_steps_tot} adaptation steps", n_steps_tot=n_steps_tot)
+        debug.print(
+            "Performed {n} adaptation steps — final logdensity: {ld}",
+            n=n_steps_tot,
+            ld=state.logdensity,
+        )
 
     return state, config
 

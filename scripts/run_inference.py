@@ -8,10 +8,13 @@ Supports --resume to continue from a previous run.
 """
 
 import argparse
+import copy
 import gc
 import os
 import pickle
 import shutil
+
+import yaml
 
 # Memory optimization for JAX on GPU
 os.environ["TF_GPU_ALLOCATOR"] = "cuda_malloc_async"
@@ -28,8 +31,10 @@ from blackjax.adaptation.mclmc_adaptation import MCLMCAdaptationState
 from jax import jit, pmap, tree
 
 from desi_cmb_fli import utils
+from desi_cmb_fli.cmb_lensing import load_abacus_observation
 from desi_cmb_fli.model import default_config, get_model_from_config
 from desi_cmb_fli.samplers import get_mclmc_run, get_mclmc_warmup
+from desi_cmb_fli.utils import ObservationMode
 
 try:
     from scripts.analyze_run import analyze_run
@@ -146,25 +151,62 @@ if RESUME_MODE:
 # NORMAL MODE: Generate truth and run warmup
 # =============================================================================
 else:
-    # Generate truth
     print("\n" + "=" * 80)
-    print("GENERATING TRUTH")
+    print("GENERATING OBSERVATION")
     print("=" * 80)
 
-    truth_params = cfg["truth_params"]
     seed = cfg["seed"]
-    print(f"Truth params: {truth_params}")
-    print(f"Seed: {seed}")
+    observation_mode = ObservationMode.validate(cfg.get("observation_mode", "closure"))
 
-    truth = model.predict(
-        samples=truth_params,
-        hide_base=False,
-        hide_samp=False,
-        hide_det=False,
-        frombase=True,
-        rng=jr.key(seed),
-    )
+    # ── Branch by observation mode ──────────────────────────────────────────
+    if observation_mode == ObservationMode.CLOSURE:
+        # Closure test: generate synthetic observation from truth_params
+        truth_params = cfg["truth_params"]
+        print(f"[Closure test] Truth params: {truth_params}")
+        print(f"Seed: {seed}")
+
+        truth = model.predict(
+            samples=truth_params,
+            hide_base=False,
+            hide_samp=False,
+            hide_det=False,
+            frombase=True,
+            rng=jr.key(seed),
+        )
+        print("[Closure test] kappa_obs generated synthetically from truth_params")
+
+    elif observation_mode == ObservationMode.ABACUS:
+        if model.galaxies_enabled:
+            raise NotImplementedError(
+                "observation_mode='abacus' with galaxies_enabled=True is not yet implemented. "
+                "No AbacusSummit galaxy catalog is loaded. "
+                "Set galaxies_enabled: false in config.yaml."
+            )
+        # Abacus N-body: load external observation via the dedicated loader.
+        truth = load_abacus_observation(
+            abacus_cfg=cfg.get("abacus_kappa", {}),
+            model=model,
+        )
+
+        abacus_truth = cfg.get("abacus_truth_params", {})
+        if abacus_truth:
+            print(f"[Abacus] Corner plot markers (abacus_truth_params): {abacus_truth}")
+        else:
+            print(
+                "[Abacus] WARNING: abacus_truth_params not set in config — "
+                "corner plot will have no truth markers."
+            )
+
+    else:
+        raise NotImplementedError(f"observation_mode {observation_mode!r} not handled here")
+    # ─────────────────────────────────────────────────────────────────────────
+
     jnp.savez(config_dir / "truth.npz", **truth)
+
+    effective_cfg = copy.deepcopy(cfg)
+    effective_cfg["observation_mode"] = observation_mode.value
+    with open(config_dir / "config.yaml", "w") as _f:
+        yaml.dump(effective_cfg, _f, default_flow_style=False, sort_keys=False)
 
     if model.galaxies_enabled and 'obs' in truth:
         print(f"\nGalaxy obs shape: {truth['obs'].shape}")
@@ -181,9 +223,8 @@ else:
     print("VALIDATION: Field Slices")
     print("-" * 40)
     from desi_cmb_fli.bricks import get_cosmology
-    from desi_cmb_fli.validation import compute_and_plot_spectra, plot_field_slices
+    from desi_cmb_fli.validation import plot_field_slices, plot_spectra
 
-    # Compute chi_center for projection (needed for galaxy projection in kappa_maps)
     chi_center = float(model.box_center[2]) if hasattr(model, "box_center") else float(model.box_shape[2] / 2.0)
 
     plot_field_slices(
@@ -192,21 +233,24 @@ else:
         box_shape=model.box_shape,
         field_size_deg=model.cmb_field_size_deg if cmb_enabled else None,
         field_npix=model.cmb_field_npix if cmb_enabled else None,
-        chi_center=chi_center
+        chi_center=chi_center,
+        observation_mode=observation_mode,
     )
     print(f"✓ Saved field slices to {fig_dir}")
 
     # Validation: Power Spectra
-    # We use n_realizations=1 (the current truth)
-    compute_and_plot_spectra(
+    cosmo_for_spectra = (
+        cfg.get("truth_params") if observation_mode == ObservationMode.CLOSURE
+        else cfg.get("abacus_truth_params")
+    )
+    plot_spectra(
+        truth=truth,
         model=model,
-        truth_params=truth_params,
         output_dir=fig_dir,
-        n_realizations=1,
-        seed=seed,
-        show=False,
+        cosmo_params=cosmo_for_spectra,
+        model_config=model_config,
+        observation_mode=observation_mode,
         suffix="_truth_check",
-        model_config=model_config
     )
 
 # MCMC config
@@ -272,9 +316,9 @@ else:
 # =============================================================================
 if not RESUME_MODE:
     # STEP 1: Warmup mesh only (benchmark approach)
-    print("\n" + "=" * 80)
-    print("STEP 1: WARMUP MESH ONLY")
-    print("=" * 80)
+    print("\n" + "=" * 80, flush=True)
+    print("STEP 1: WARMUP MESH ONLY", flush=True)
+    print("=" * 80, flush=True)
 
     model.reset()
     model.condition(condition_dict | model.loc_fid, frombase=True)
@@ -315,7 +359,9 @@ if not RESUME_MODE:
     # Store init params for diagnostic plot
     params_start = init_params_.copy()
 
-    print(f"Warming mesh ({cfg['mcmc'].get('mesh_warmup_steps', 2**13)} steps, cosmo/bias fixed)...")
+    print(f"Warming mesh ({cfg['mcmc'].get('mesh_warmup_steps', 2**13)} steps, cosmo/bias fixed)...", flush=True)
+    import time as _time
+    _t0 = _time.time()
     warmup_mesh_fn = pmap(jit(get_mclmc_warmup(
         model.logpdf,
         n_steps=cfg["mcmc"].get("mesh_warmup_steps", 2**13),
@@ -323,28 +369,34 @@ if not RESUME_MODE:
         desired_energy_var=1e-6,
         diagonal_preconditioning=True,
     )))
+    print(f"  [build warmup_mesh_fn: {_time.time()-_t0:.1f}s]", flush=True)
 
+    _t0 = _time.time()
     state_mesh, config_mesh = warmup_mesh_fn(jr.split(jr.key(43), num_chains), init_mesh_)
+    # Force sync to get accurate wall time
+    jnp.array(0.).block_until_ready()
+    print(f"  [mesh warmup call: {_time.time()-_t0:.1f}s]", flush=True)
 
-    print("✓ Mesh warmup done")
-    print(f"  Logdens (median): {float(jnp.median(state_mesh.logdensity)):.2f}")
-    print(f"  L (median): {float(jnp.median(config_mesh.L)):.6f}")
-    print(f"  step_size (median): {float(jnp.median(config_mesh.step_size)):.6f}")
+    print("✓ Mesh warmup done", flush=True)
+    print(f"  Logdens (median): {float(jnp.median(state_mesh.logdensity)):.2f}", flush=True)
+    print(f"  L (median): {float(jnp.median(config_mesh.L)):.6f}", flush=True)
+    print(f"  step_size (median): {float(jnp.median(config_mesh.step_size)):.6f}", flush=True)
 
     # Update only init_mesh_ from mesh warmup, keep cosmo/bias from initial params
     init_params_["init_mesh_"] = state_mesh.position["init_mesh_"]
 
     # STEP 2: Warmup all params
-    print("\n" + "=" * 80)
-    print("STEP 2: WARMUP ALL PARAMS")
-    print("=" * 80)
+    print("\n" + "=" * 80, flush=True)
+    print("STEP 2: WARMUP ALL PARAMS", flush=True)
+    print("=" * 80, flush=True)
 
     model.reset()
     model.condition(condition_dict)
     model.block()
 
-    print(f"Warming all params ({num_warmup} steps)...")
-    print(f"  Initial scalar params: fiducial (Omega_m={model.loc_fid['Omega_m']:.4f}, sigma8={model.loc_fid['sigma8']:.4f}, b1={model.loc_fid['b1']:.2f}, ...)")
+    print(f"Warming all params ({num_warmup} steps)...", flush=True)
+    print(f"  Initial scalar params: fiducial (Omega_m={model.loc_fid['Omega_m']:.4f}, sigma8={model.loc_fid['sigma8']:.4f}, b1={model.loc_fid['b1']:.2f}, ...)", flush=True)
+    _t0 = _time.time()
     warmup_all_fn = pmap(jit(get_mclmc_warmup(
         model.logpdf,
         n_steps=num_warmup,
@@ -352,8 +404,12 @@ if not RESUME_MODE:
         desired_energy_var=desired_energy_var,
         diagonal_preconditioning=diagonal_precond,
     )))
+    print(f"  [build warmup_all_fn: {_time.time()-_t0:.1f}s]", flush=True)
 
+    _t0 = _time.time()
     state, config = warmup_all_fn(jr.split(jr.key(43), num_chains), init_params_)
+    jnp.array(0.).block_until_ready()
+    print(f"  [all-params warmup call: {_time.time()-_t0:.1f}s]", flush=True)
 
     print("✓ Full warmup done")
 
@@ -426,7 +482,7 @@ if not RESUME_MODE:
     print(f"   Std: {ld_std:.2f}")
 
     # Test 3: Post-warmup scalar params (physical values) vs truth
-    print("\n3. Scalar Parameters (post-warmup, physical values vs truth):")
+    print("\n3. Scalar Parameters (post-warmup):")
     truth_params = cfg.get("truth_params", {})
     for param in ["Omega_m_", "sigma8_", "b1_", "b2_", "bs2_", "bn2_"]:
         if param in state.position:
@@ -437,7 +493,10 @@ if not RESUME_MODE:
             sample_vals = jnp.array(state.position[param])
             physical_vals = loc_fid + sample_vals * scale_fid
             truth_val = truth_params.get(base_name, "?")
-            print(f"   {base_name}: {physical_vals} (truth: {truth_val})")
+            if observation_mode == ObservationMode.CLOSURE :
+                print(f"   {base_name}: {physical_vals} (truth: {truth_val})")
+            if observation_mode == ObservationMode.ABACUS:
+                print(f"   {base_name}: {physical_vals}")
 
 
 # STEP 3: Multi-Chain Mini-Batch Sampling
