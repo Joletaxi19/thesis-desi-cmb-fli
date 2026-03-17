@@ -103,13 +103,13 @@ The Born projection converts each z-slice of the 3D matter mesh into an angular 
 
 **Anti-aliasing**: the accumulation is done in **Fourier space** with two per-shell corrections:
 
-1. **Bilinear deconvolution**: division by $\operatorname{sinc}^2(\ell\,\Delta x / 2\pi\chi)$ corrects the attenuation introduced by the bilinear interpolation kernel.
+1. **Bilinear deconvolution**: division by $\mathrm{sinc}^2(\ell\,\Delta x / 2\pi\chi)$ corrects the attenuation introduced by the bilinear interpolation kernel.
 2. **Per-shell $\ell_{\max}$ filter**: each shell at comoving distance $\chi$ only contributes angular modes $\ell < k_{\rm Nyq} \times \chi$ where $k_{\rm Nyq} = \pi/\Delta x$. This prevents 3D Nyquist-aliased power from the matter mesh from contaminating the angular spectrum.
 
 The input `density_field` is pre-anti-aliased in 3D by `paint_and_deconv` (interlaced CIC + deconvolution + Fourier crop), so the 2D projection inherits the 3D anti-aliasing and adds its own angular-domain corrections.
 
 The lensing kernel per slice is:
-$$W_\kappa(\chi, a) = \frac{3}{2}\Omega_m\left(\frac{H_0}{c}\right)^2 \frac{\chi}{a} \cdot \frac{\chi_s - \chi}{\chi_s}$$
+$W_\kappa(\chi, a) = \frac{3}{2}\Omega_m\left(\frac{H_0}{c}\right)^2 \frac{\chi}{a} \cdot \frac{\chi_s - \chi}{\chi_s}$
 
 ### Flat-Sky Diagnostic Projection (`project_flat_sky`)
 
