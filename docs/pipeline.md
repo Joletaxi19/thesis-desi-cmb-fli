@@ -141,7 +141,7 @@ where $C_\ell = N_\ell + C_\ell^{high-z}$ is the total variance (noise + cosmic 
 - However, in **taylor** and **exact** high-z modes, $C_\ell^{high-z}$ depends on cosmological parameters ($\Omega_m, \sigma_8$), making the log-determinant **parameter-dependent** and required for correct posterior normalization.
 
 **Nyquist Frequency Filtering**: Modes beyond **0.5 × Nyquist frequency** are masked out in the CMB likelihood to avoid constraining with poorly-resolved scales. The fraction is set by `NYQUIST_FRACTION = 0.5` in `cmb_lensing.py`. The Nyquist limit is computed as:
-$$\ell_{Nyquist} = \frac{180° \times N_{pix}}{\mathrm{field\_size_{deg}}}$$
+$\ell_{Nyquist} = \frac{180° \times N_{pix}}{\mathrm{field\_size_{deg}}}$
 Only modes with $\ell \leq 0.5 \times \ell_{Nyquist}$ contribute to the likelihood (chi-squared and log-determinant terms).
 
 **Planck PR4 Noise**: Incorporates realistic reconstruction noise using the official Planck PR4 $N_\ell$ spectrum.
