@@ -286,7 +286,10 @@ def a2chi(cosmo, a):
     Radial comoving distance in Mpc/h for a given scale factor.
     """
     a = jnp.asarray(a)
-    chi = jc.background.radial_comoving_distance(cosmo, a.reshape(-1))
+    if "background.radial_comoving_distance" not in cosmo._workspace.keys():
+        jc.background.radial_comoving_distance(cosmo, jnp.atleast_1d(1.0))
+    cache = cosmo._workspace["background.radial_comoving_distance"]
+    chi = jnp.interp(a.reshape(-1), cache["a"], cache["chi"])
     return chi.reshape(a.shape)
 
 
@@ -295,7 +298,10 @@ def chi2a(cosmo, chi):
     Scale factor for a given radial comoving distance in Mpc/h.
     """
     chi = jnp.asarray(chi)
-    a = jc.background.a_of_chi(cosmo, chi.reshape(-1))
+    if "background.radial_comoving_distance" not in cosmo._workspace.keys():
+        jc.background.radial_comoving_distance(cosmo, jnp.atleast_1d(1.0))
+    cache = cosmo._workspace["background.radial_comoving_distance"]
+    a = jnp.interp(chi.reshape(-1), cache["chi"][::-1], cache["a"][::-1])
     return a.reshape(chi.shape)
 
 
