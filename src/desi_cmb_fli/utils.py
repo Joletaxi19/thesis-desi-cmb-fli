@@ -88,6 +88,32 @@ def safe_div(x, y):
     return jnp.where(y == 0, 0, x / y_nozeros)
 
 
+def radecrad2cart(ra, dec, radius):
+    """
+    Convert RA, DEC (in degrees) and radius to Cartesian coordinates.
+    """
+    ra = jnp.deg2rad(jnp.asarray(ra, dtype=float))
+    dec = jnp.deg2rad(jnp.asarray(dec, dtype=float))
+    x = jnp.cos(dec) * jnp.cos(ra)
+    y = jnp.cos(dec) * jnp.sin(ra)
+    z = jnp.sin(dec)
+    cart = jnp.moveaxis(radius * jnp.stack((x, y, z)), 0, -1)
+    return cart
+
+
+def cart2radecrad(cart):
+    """
+    Convert Cartesian coordinates to RA, DEC (in degrees) and radius.
+
+    * RA in [0, 360], DEC in [-90, 90], radius >= 0.
+    """
+    radius = jnp.linalg.norm(cart, axis=-1)
+    x, y, z = jnp.moveaxis(cart, -1, 0)
+    ra = jnp.rad2deg(jnp.arctan2(y, x)) % 360.0
+    dec = jnp.rad2deg(jnp.arcsin(safe_div(z, radius)))
+    return ra, dec, radius
+
+
 #################
 # Dump and Load #
 #################
